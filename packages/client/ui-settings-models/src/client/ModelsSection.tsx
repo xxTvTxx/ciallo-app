@@ -29,6 +29,7 @@ import type { LlmNativeAuth, SettingsNamespaceView } from '@deepseek-ai/dsh-api-
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
+import { CIALLO_API, cialloApiProtocols } from './ciallo-api.ts'
 import { deriveKeyRef, protocolChoices, providerUsable, reasoningLevelChoices } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
@@ -98,6 +99,12 @@ interface EditorTarget extends ProviderIdentity {
   baseURLEnv?: readonly string[]
   /** The route's native authentication (see {@link ProviderEditorProps.nativeAuth}). */
   nativeAuth?: LlmNativeAuth
+}
+
+const CIALLO_API_TARGET: EditorTarget = {
+  ...CIALLO_API,
+  settingsNs: 'llm-pi-ai',
+  settingsPath: ['providers', CIALLO_API.provider],
 }
 
 /** A dormant directory row the add card can adopt, with its registered namespace. */
@@ -377,14 +384,22 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const piAi = state.namespaces.get('llm-pi-ai')
   const protocols = protocolChoices(piAi, schema)
   const reasoningLevels = reasoningLevelChoices(piAi, schema)
+  const cialloProtocols = cialloApiProtocols(protocols)
+  const providerIds = state.rows.map(row => row.entry.provider)
+  const cialloOffered = cialloProtocols.length > 0
+    && (editing === CIALLO_API_TARGET || (
+      configurable.some(row => row.entry.settingsNs === CIALLO_API_TARGET.settingsNs)
+      && !providerIds.includes(CIALLO_API.provider)
+      && !schema.hasPath(piAi?.value, CIALLO_API_TARGET.settingsPath)
+    ))
   // Each mode is offered while its namespace is mounted and enabled while it
   // has something to offer; the card shows the chosen mode where both are
   // offered, else the only one there is. A mode's panel is mounted while it is
   // the shown mode or has been shown since the card opened — derived, so a
   // refresh that changes which modes are offered can never leave the card
   // without a panel.
-  const catalogOffered = configurable.length > 0
-  const catalogEnabled = addable.length > 0
+  const catalogOffered = configurable.length > 0 || cialloOffered
+  const catalogEnabled = addable.length > 0 || cialloOffered
   const customOffered = piAi !== undefined
   const customEnabled = protocols.length > 0
   const bothOffered = catalogOffered && customOffered
@@ -399,9 +414,12 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const draft = ((): CatalogDraft | undefined => {
     if (!addOpen || !catalogOffered) return undefined
     const kept = editing === undefined ? undefined : state.namespaces.get(editing.settingsNs)
-    if (editing !== undefined && kept !== undefined) return { target: editing, namespace: kept }
+    if (editing !== undefined && kept !== undefined && (editing !== CIALLO_API_TARGET || cialloOffered)) {
+      return { target: editing, namespace: kept }
+    }
     const first = addable[0]
-    return first === undefined ? undefined : { target: targetOf(first.row), namespace: first.namespace }
+    if (first !== undefined) return { target: targetOf(first.row), namespace: first.namespace }
+    return cialloOffered && piAi !== undefined ? { target: CIALLO_API_TARGET, namespace: piAi } : undefined
   })()
   // The draft's directory row, for the card extension seat. A refresh can drop
   // the row mid-draft (the route was adopted or withdrawn elsewhere); the
@@ -409,6 +427,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const addRow = draft === undefined
     ? undefined
     : state.rows.find(row => row.entry.provider === draft.target.provider)
+  const cialloSelected = draft?.target === CIALLO_API_TARGET
 
   return (
     <div className={styles['section']}>
@@ -626,18 +645,34 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                         aria-label={t('provider')}
                         disabled={catalogBusy}
                         onChange={(event) => {
+                          if (cialloOffered && event.target.value === CIALLO_API.provider) {
+                            setEditing(CIALLO_API_TARGET)
+                            return
+                          }
                           const picked = addable.find(candidate => candidate.row.entry.provider === event.target.value)
                           /* v8 ignore next -- the select only lists addable rows */
                           if (picked === undefined) return
                           setEditing(targetOf(picked.row))
                         }}
                       >
+                        {cialloOffered ? <option value={CIALLO_API.provider}>{CIALLO_API.displayName}</option> : null}
                         {addable.map(({ row }) => (
                           <option key={row.entry.provider} value={row.entry.provider}>{row.entry.displayName}</option>
                         ))}
                       </select>
                     </div>
-                    <ProviderEditor
+                    {cialloSelected ? <CustomProviderCard
+                      cialloApi
+                      taken={providerIds}
+                      protocols={cialloProtocols}
+                      reasoningLevels={reasoningLevels}
+                      revision={draft.namespace.revision}
+                      operations={operations}
+                      t={t}
+                      readOnly={!state.writable}
+                      onClose={(changed) => { closeEditor(changed, CIALLO_API_TARGET) }}
+                      onBusyChange={setCatalogBusy}
+                    /> : <ProviderEditor
                       key={draft.target.provider}
                       provider={draft.target.provider}
                       displayName={draft.target.displayName}
@@ -654,8 +689,8 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                       readOnly={!state.writable}
                       onClose={(changed) => { closeEditor(changed, draft.target) }}
                       onBusyChange={setCatalogBusy}
-                    />
-                    {addRow === undefined
+                    />}
+                    {cialloSelected || addRow === undefined
                       ? null
                       : renderSlot(
                         'settings.models.provider-card',
@@ -674,7 +709,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                     className={styles['addPanel']}
                   >
                     <CustomProviderCard
-                      taken={state.rows.map(row => row.entry.provider)}
+                      taken={providerIds}
                       protocols={protocols}
                       reasoningLevels={reasoningLevels}
                       revision={piAi.revision}

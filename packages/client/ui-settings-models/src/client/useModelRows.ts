@@ -30,6 +30,7 @@ interface ModelRows {
   toggle: (index: number) => void
   edit: (index: number, field: CapacityField, text: string | undefined) => void
   forget: (removed: ReadonlySet<number>) => void
+  adopt: (removed: ReadonlySet<number>, expanded: ReadonlySet<number>, appended: number) => void
   reset: () => void
 }
 
@@ -103,6 +104,15 @@ export function useModelRows(
     },
     forget: (removed: ReadonlySet<number>): void => {
       setRows(rows.filter((_row, index) => !removed.has(index)))
+      endDrag()
+    },
+    adopt: (removed, expanded, appended): void => {
+      setRows([
+        ...rows.flatMap((row, index) => removed.has(index) ? [] : [
+          expanded.has(index) ? { ...row, expanded: true } : row,
+        ]),
+        ...Array.from({ length: appended }, () => ({ ...createRow(nextKey.current++), expanded: true })),
+      ])
       endDrag()
     },
     reset: (): void => { setRows(models.map(() => createRow(nextKey.current++))); endDrag() },

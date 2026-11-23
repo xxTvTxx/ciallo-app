@@ -145,6 +145,8 @@ function adopt(candidate: LlmDiscoveredModel): ModelDraft {
     ...candidate.contextWindow === undefined ? {} : { contextWindow: candidate.contextWindow },
     ...candidate.maxTokens === undefined ? {} : { maxTokens: candidate.maxTokens },
     ...candidate.inputModalities === undefined ? {} : { input: [...candidate.inputModalities] },
+    ...candidate.reasoningEfforts === undefined ? {} : { reasoningEfforts: { ...candidate.reasoningEfforts } },
+    ...candidate.defaultReasoningEffort === undefined ? {} : { defaultReasoningEffort: candidate.defaultReasoningEffort },
   }
 }
 
@@ -259,9 +261,12 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   // An unchecked candidate leaves the list. A row the listing does not name,
   // including a half-typed row without an id, is outside the picker and stays.
   const removedRows = new Set<number>()
+  const expandedRows = new Set<number>()
   models.forEach((model, at) => {
     const id = textOf(model, 'id')
-    if (listed.has(id) && !isPicked(id)) removedRows.add(at)
+    if (!listed.has(id)) return
+    if (isPicked(id)) expandedRows.add(at)
+    else removedRows.add(at)
   })
   // A kept row the user already tuned wins over the provider's own numbers.
   const keptRows = models.filter((_model, at) => !removedRows.has(at))
@@ -275,7 +280,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
 
   const adoptPicked = (): void => {
     onChange([...keptRows, ...addedRows])
-    rowState.forget(removedRows)
+    rowState.adopt(removedRows, expandedRows, addedRows.length)
     closePicker()
   }
 

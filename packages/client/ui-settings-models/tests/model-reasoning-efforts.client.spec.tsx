@@ -35,7 +35,7 @@ function renderGroup(initial: DeepSeekModelDraft, options: { disabled?: boolean;
 }
 
 const toggle = () => screen.getByRole('switch', { name: `${en.modelReasoning} 1` })
-const levels = () => screen.queryAllByRole<HTMLSelectElement>('combobox').map(select => select.value)
+const levels = () => screen.queryAllByRole<HTMLSelectElement>('combobox', { name: /^Level \d+$/ }).map(select => select.value)
 const select = (row: number) => screen.getByRole<HTMLSelectElement>('combobox', { name: `${en.modelReasoningLevel} ${String(row)}` })
 const value = (level: string) => screen.getByRole<HTMLInputElement>('textbox', { name: `${level} ${en.modelReasoningValue}` })
 const remove = (level: string) => screen.getByRole<HTMLButtonElement>('button', { name: `${en.modelReasoningRemove} ${level}` })
@@ -43,6 +43,15 @@ const add = () => screen.getByRole<HTMLButtonElement>('button', { name: en.model
 const entriesOf = (efforts: unknown) => Object.entries(efforts as object)
 
 describe('ModelReasoningEfforts', () => {
+  it('saves a default effort and clears it when its level is deleted', () => {
+    const { writes } = renderGroup({ id: 'chat', reasoningEfforts: { low: 'low', high: 'high' } })
+    const defaultEffort = screen.getByRole('combobox', { name: `${en.modelReasoningDefault} 1` })
+    fireEvent.change(defaultEffort, { target: { value: 'high' } })
+    expect(writes.at(-1)?.['defaultReasoningEffort']).toBe('high')
+    fireEvent.click(remove('high'))
+    expect(writes.at(-1)).toEqual({ id: 'chat', reasoningEfforts: { low: 'low' } })
+  })
+
   it.each([
     ['absent', { id: 'chat' }],
     ['false', { id: 'chat', reasoningEfforts: false }],

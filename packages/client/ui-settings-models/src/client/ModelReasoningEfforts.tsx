@@ -51,6 +51,9 @@ function readEfforts(model: DeepSeekModelDraft): Entries | undefined {
  */
 function withEfforts(model: DeepSeekModelDraft, entries: Entries | undefined): DeepSeekModelDraft {
   const next = { ...model }
+  if (!entries?.some(([level]) => level === next['defaultReasoningEffort'])) {
+    Reflect.deleteProperty(next, 'defaultReasoningEffort')
+  }
   if (entries === undefined) {
     // Absent keeps the installed catalog's levels; a model the catalog does not describe then does not reason.
     Reflect.deleteProperty(next, 'reasoningEfforts')
@@ -136,6 +139,8 @@ export function ModelReasoningEfforts(props: ModelReasoningEffortsProps): ReactN
   const [typing, setTyping] = useState<{ level: string; text: string } | undefined>(undefined)
   const label = `${t('modelReasoning')} ${String(position)}`
   const used = entries?.map(([level]) => level) ?? []
+  const storedDefault = model['defaultReasoningEffort']
+  const selectedDefault = typeof storedDefault === 'string' ? storedDefault : ''
 
   const write = (next: Entries | undefined): void => { onChange(withEfforts(model, next)) }
   const replaceAt = (current: Entries, index: number, entry: readonly [string, unknown]): Entries =>
@@ -197,6 +202,28 @@ export function ModelReasoningEfforts(props: ModelReasoningEffortsProps): ReactN
           onChange={(on) => { write(on ? initialEntries : undefined) }}
         />
       </div>
+      <label className={styles['modelField']}>
+        <span className={styles['modelFieldLabel']}>{t('modelReasoningDefault')}</span>
+        <select
+          className={`${styles['input']} ${styles['selectInput']}`}
+          aria-label={`${t('modelReasoningDefault')} ${String(position)}`}
+          value={selectedDefault}
+          disabled={disabled || used.length === 0}
+          onChange={(event) => {
+            const next = { ...model }
+            const effort = event.target.value
+            if (effort === '') Reflect.deleteProperty(next, 'defaultReasoningEffort')
+            else next['defaultReasoningEffort'] = effort
+            onChange(next)
+          }}
+        >
+          <option value="">{t('modelReasoningAutomatic')}</option>
+          {selectedDefault !== '' && !used.includes(selectedDefault)
+            ? <option value={selectedDefault}>{selectedDefault}</option>
+            : null}
+          {used.map(level => <option key={level} value={level}>{level}</option>)}
+        </select>
+      </label>
       {entries === undefined
         ? null
         : (

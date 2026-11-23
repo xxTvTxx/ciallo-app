@@ -314,6 +314,15 @@ function cardSeatCalls(
     ])
 }
 
+function markCialloConfigured(scripted: ReturnType<typeof scriptedFace>): void {
+  const namespaces = wireNamespaces().map((view) => {
+    if (view.ns !== 'llm-pi-ai') return view
+    const { providers } = view.value as { providers: Record<string, JsonValue> }
+    return { ...view, value: { providers: { ...providers, cialloapi: { baseURL: 'https://gateway.example/v1' } } } }
+  })
+  scripted.face.settings.describe.mockResolvedValue(remoteOk({ writable: true, hasDocument: true, namespaces }))
+}
+
 async function mountFace(scripted: ReturnType<typeof scriptedFace>) {
   const { face, update, mutate, set, unset } = scripted
   const ctx = ctxWith(face)
@@ -1479,7 +1488,7 @@ describe('ModelsSection', () => {
     const { mutate, set } = await mountSection()
     fireEvent.click(screen.getByText(en.add))
     const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
-    expect([...pick.options].map(option => option.value)).toEqual(['anthropic', 'broken', 'plain'])
+    expect([...pick.options].map(option => option.value)).toEqual(['cialloapi', 'anthropic', 'broken', 'plain'])
     expect(pick.value).toBe('anthropic')
     // A dormant route shows its catalog endpoint and the first variable its
     // provider reads; a typed key still stores under the derived reference.
@@ -1808,6 +1817,7 @@ describe('ModelsSection', () => {
 
   it('opens on the custom mode when every catalog provider is already configured', async () => {
     const scripted = scriptedFace()
+    markCialloConfigured(scripted)
     scripted.face.llm.listConfigurableProviders.mockResolvedValue(remoteOk([
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
       { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
@@ -1861,6 +1871,7 @@ describe('ModelsSection', () => {
 
   it('picks a catalog target when the catalog becomes addable after the card opened', async () => {
     const scripted = scriptedFace()
+    markCialloConfigured(scripted)
     const exhausted = [
       { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [] },
       { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
@@ -1988,6 +1999,7 @@ describe('ModelsSection', () => {
 
   it('explains a locked mode through its hover title', async () => {
     const scripted = scriptedFace()
+    markCialloConfigured(scripted)
     scripted.face.llm.listConfigurableProviders.mockResolvedValue(remoteOk([
       { provider: 'openai', displayName: 'openai', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'openai'] },
     ]))

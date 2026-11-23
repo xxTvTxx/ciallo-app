@@ -12,9 +12,9 @@ import { getAllBuiltinModels, getBuiltinModels, getBuiltinProviders } from '@ear
 import { AssistantMessageEventStream } from '@earendil-works/pi-ai/utils/event-stream'
 import { normalizeContext } from '@earendil-works/pi-ai/utils/transcript'
 import type { Api, Model, OpenAICompletionsCompat, Provider } from '@earendil-works/pi-ai'
-import { catalogModels, catalogProvider } from '../src/catalog.ts'
+import { catalogModels, catalogProvider, getSupportedThinkingLevels } from '../src/catalog.ts'
 import { resolveProfiles } from '../src/config.ts'
-import { createModels, createProvider, getSupportedThinkingLevels } from '../src/models.ts'
+import { createModels, createProvider } from '../src/models.ts'
 import { buildProvider, supportedProtocols } from '../src/provider.ts'
 import { assemble } from './assemble.ts'
 import { memoryAuth } from './auth-double.ts'
@@ -711,6 +711,27 @@ describe('per-model reasoning efforts', () => {
     const model = modelOf(declared([{ id: 'm', reasoningEfforts: { off: 'none', high: 'high' } }]))
     expect(model.thinkingLevelMap?.off).toBe('none')
     expect(getSupportedThinkingLevels(model)).toEqual(['off', 'high'])
+  })
+
+  it('inherits the CialloAPI Claude efforts while preserving explicit declarations', () => {
+    const route = resolveProfiles({ cialloapi: {
+      api: 'anthropic-messages', baseURL: 'https://cialloapi.com',
+      models: [
+        { id: 'claude-opus-5-5', reasoningEfforts: { low: 'low', high: 'high' } },
+        { id: 'claude-sonnet-5-5', defaultReasoningEffort: 'medium' },
+        { id: 'claude-haiku-5-5' },
+        { id: 'custom-model' },
+      ],
+    } }).get('cialloapi')
+    const models = route?.piProvider?.getModels() ?? []
+    expect(models.map(model => getSupportedThinkingLevels(model))).toEqual([
+      ['low', 'high'],
+      ['low', 'medium', 'high', 'xhigh', 'max'],
+      ['low', 'medium', 'high', 'xhigh', 'max'],
+      ['off'],
+    ])
+    expect(models[1]?.compat).toMatchObject({ forceAdaptiveThinking: true })
+    expect(route?.defaultReasoningEfforts.get('claude-sonnet-5-5')).toBe('medium')
   })
 
   it('offers exactly the declared keys: leaving off out makes thinking mandatory', () => {

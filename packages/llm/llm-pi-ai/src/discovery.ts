@@ -27,7 +27,7 @@ import { normalizeApiKey } from '@deepseek-ai/dsh-credentials'
 import { INVALID_CREDENTIAL_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels } from './catalog.ts'
+import { catalogModels, cialloReasoningEfforts, THINKING_LEVELS } from './catalog.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -310,6 +310,51 @@ export interface StoredModelDiscoveryProfile {
   readonly resolveApiKey: () => Promise<string | undefined>
 }
 
+interface CodexModel {
+  slug?: unknown
+  context_window?: unknown
+  max_context_window?: unknown
+  supported_reasoning_levels?: unknown
+  default_reasoning_level?: unknown
+}
+
+/** Fetch optional Codex metadata without changing the gateway's regular model roster. */
+async function cialloCodexMetadata(
+  listing: string, apiKey: string | undefined, signal: AbortSignal | undefined,
+): Promise<ReadonlyMap<string, CodexModel>> {
+  const url = new URL(listing)
+  url.search = ''
+  url.searchParams.set('client_version', '0.158.0')
+  const deadline = AbortSignal.timeout(4_000)
+  try {
+    const response = await fetch(url.href, {
+      headers: { accept: 'application/json', ...apiKey === undefined ? {} : { authorization: `Bearer ${apiKey}` } },
+      redirect: 'error',
+      signal: signal === undefined ? deadline : AbortSignal.any([signal, deadline]),
+    })
+    if (!response.ok) return new Map()
+    const payload = JSON.parse(await readBounded(response, url.href)) as { models?: unknown } | null
+    if (!Array.isArray(payload?.models)) return new Map()
+    const byId = new Map<string, CodexModel>()
+    for (const record of payload.models as (CodexModel | null)[]) {
+      if (typeof record?.slug === 'string') byId.set(record.slug, record)
+    }
+    return byId
+  } catch (error: unknown) {
+    if (signal?.aborted) throw new LlmError('model discovery aborted by caller', 'ABORTED', { cause: error })
+    return new Map()
+  }
+}
+
+function readCodexEfforts(value: unknown): Readonly<Record<string, string>> | undefined {
+  if (!Array.isArray(value)) return undefined
+  const levels = value.flatMap((record: unknown) => {
+    const effort = record !== null && typeof record === 'object' && 'effort' in record ? record.effort : record
+    return THINKING_LEVELS.filter(level => level !== 'off' && effort === level)
+  })
+  return levels.length === 0 ? undefined : Object.fromEntries(levels.map(level => [level, level]))
+}
+
 /**
  * Interrogate one draft provider endpoint for the models it advertises.
  * @param request - the endpoint, protocol, and one-shot credential to use.
@@ -415,5 +460,28 @@ export async function discoverModels(
   } catch (error: unknown) {
     throw new LlmError(`${url} did not answer with JSON`, 'DISCOVERY_FAILED', { cause: error })
   }
-  return api === 'google-generative-ai' ? readGeminiListing(body) : readListing(body)
+  if (api === 'google-generative-ai') return readGeminiListing(body)
+  const models = readListing(body)
+  if (request.provider !== 'cialloapi' || URL.parse(url)?.origin !== 'https://cialloapi.com'
+    || (api !== 'anthropic-messages' && api !== 'openai-responses')) return models
+
+  const metadata = await cialloCodexMetadata(url, apiKey, request.signal)
+  return models.map((model) => {
+    const record = metadata.get(model.id)
+    const contextWindow = model.contextWindow ?? capacity(record?.context_window, record?.max_context_window)
+    const knownEfforts = cialloReasoningEfforts(request.provider, api, url, model.id)
+    const advertisedEfforts = api === 'openai-responses' || knownEfforts !== undefined
+      ? readCodexEfforts(record?.supported_reasoning_levels)
+      : undefined
+    const reasoningEfforts = advertisedEfforts ?? knownEfforts
+    const defaultEffort = record?.default_reasoning_level
+    return {
+      ...model,
+      ...contextWindow === undefined ? {} : { contextWindow },
+      ...reasoningEfforts === undefined ? {} : { reasoningEfforts },
+      ...typeof defaultEffort === 'string' && reasoningEfforts !== undefined && Object.hasOwn(reasoningEfforts, defaultEffort)
+        ? { defaultReasoningEffort: defaultEffort }
+        : {},
+    }
+  })
 }

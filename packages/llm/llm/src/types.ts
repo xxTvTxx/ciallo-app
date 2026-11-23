@@ -349,6 +349,10 @@ export interface LlmDiscoveredModel {
   maxTokens?: number
   /** Accepted input types when disclosed by the catalog or endpoint; absent means unknown. */
   inputModalities?: readonly ModelModality[]
+  /** Reasoning level ids and their wire values, when known to the adapter. */
+  reasoningEfforts?: Readonly<Record<string, string | null>>
+  /** A known default among the discovered reasoning levels. */
+  defaultReasoningEffort?: string
 }
 
 /**

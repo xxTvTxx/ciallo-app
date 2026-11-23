@@ -49,7 +49,7 @@ import { orderModelProviders } from './provider-order.ts'
 type Pane =
   | { kind: 'root' }
   | { kind: 'model' }
-  | { kind: 'effort' }
+  | { kind: 'effort'; model?: ModelSelection }
   | { kind: 'detail'; pane: ModelMenuPaneRef }
 
 /** Any pane reached by drilling from the root menu. */
@@ -143,6 +143,13 @@ export function ModelSelect(
   const currentChoice = choices[selectedIndex]
   const reasoning = currentChoice?.model.reasoning
   const effectiveEffort = state.current?.reasoningEffort ?? reasoning?.defaultEffort
+  const effortTarget = pane.kind === 'effort' ? pane.model : undefined
+  const targetReasoning = effortTarget === undefined
+    ? reasoning
+    : choices.find(choice => choice.selection.provider === effortTarget.provider
+      && choice.selection.model === effortTarget.model)?.model.reasoning
+  const pickedEffort = effortTarget === undefined || (effortTarget.provider === state.current?.provider
+    && effortTarget.model === state.current.model) ? effectiveEffort : targetReasoning?.defaultEffort
   const effortLabel = currentChoice === undefined
     ? undefined
     : reasoning === undefined
@@ -150,18 +157,18 @@ export function ModelSelect(
       : effectiveEffort === undefined
         ? t('effort.providerDefault')
         : reasoning.efforts.find(level => level.id === effectiveEffort)?.name ?? effectiveEffort
-  const effortChoices = useMemo<readonly EffortChoice[]>(() => reasoning === undefined
+  const effortChoices = useMemo<readonly EffortChoice[]>(() => targetReasoning === undefined
     ? []
     : [
-      ...reasoning.defaultEffort === undefined
+      ...targetReasoning.defaultEffort === undefined
         ? [{ key: 'provider-default', effort: undefined, label: t('effort.providerDefault') }]
         : [],
-      ...reasoning.efforts.map((effort: ModelReasoningEffort) => ({
+      ...targetReasoning.efforts.map((effort: ModelReasoningEffort) => ({
         key: `effort:${effort.id}`,
         effort: effort.id,
         label: effort.name,
       })),
-    ], [reasoning, t])
+    ], [targetReasoning, t])
   const { pending } = state
   const busy = pending !== null
 
@@ -281,6 +288,11 @@ export function ModelSelect(
 
   /** Leave a drilled pane for the root one, handing the keyboard back to its cell. */
   const back = (from: DrilledPane): void => {
+    if (from.kind === 'effort' && from.model !== undefined) {
+      paneFocus.current = 'drill'
+      setPane(MODEL_PANE)
+      return
+    }
     paneFocus.current = from
     setPane(ROOT_PANE)
   }
@@ -314,7 +326,8 @@ export function ModelSelect(
     if (event.key === 'Escape' && open) {
       event.preventDefault()
       // Escape backs out of a drilled pane first, then closes.
-      if (pane.kind === 'detail' || (pane.kind !== 'root' && currentChoice !== undefined)) back(pane)
+      if (pane.kind === 'detail' || (pane.kind === 'effort' && pane.model !== undefined)
+        || (pane.kind !== 'root' && currentChoice !== undefined)) back(pane)
       else close(true)
       return
     }
@@ -347,7 +360,7 @@ export function ModelSelect(
     if (event.key === 'Tab') {
       if (event.shiftKey) {
         event.preventDefault()
-        if (pane.kind !== 'root' && currentChoice !== undefined) back(pane)
+        if ((pane.kind === 'effort' && pane.model !== undefined) || (pane.kind !== 'root' && currentChoice !== undefined)) back(pane)
         else close(true)
         return
       }
@@ -416,6 +429,12 @@ export function ModelSelect(
   }
 
   const choose = (selection: ModelSelection): void => {
+    const next = choices.find(choice => choice.selection.provider === selection.provider && choice.selection.model === selection.model)
+    if ((next?.model.reasoning?.efforts.length ?? 0) > 0) {
+      paneFocus.current = 'drill'
+      setPane({ kind: 'effort', model: selection })
+      return
+    }
     if (state.current?.provider === selection.provider && state.current.model === selection.model) {
       closeAfterSelection()
       return
@@ -424,14 +443,15 @@ export function ModelSelect(
   }
 
   const chooseEffort = (effort: string | undefined): void => {
-    if (state.current === null) return
-    if (effectiveEffort === effort) {
+    const target = effortTarget ?? state.current
+    if (target === null) return
+    if (target.provider === state.current?.provider && target.model === state.current.model && effectiveEffort === effort) {
       closeAfterSelection()
       return
     }
     const selection: ModelSelection = {
-      provider: state.current.provider,
-      model: state.current.model,
+      provider: target.provider,
+      model: target.model,
       ...effort === undefined ? {} : { reasoningEffort: effort },
     }
     submit(selection)
@@ -683,8 +703,8 @@ export function ModelSelect(
                       ref={itemRef()}
                       type="button"
                       role="menuitemradio"
-                      aria-checked={effectiveEffort === level.effort}
-                      className={clsx(css.option, effectiveEffort === level.effort && css.selected)}
+                      aria-checked={pickedEffort === level.effort}
+                      className={clsx(css.option, pickedEffort === level.effort && css.selected)}
                       key={level.key}
                       disabled={busy}
                       onClick={() => { chooseEffort(level.effort) }}
@@ -693,10 +713,10 @@ export function ModelSelect(
                         <span className={css.modelName}>{level.label}</span>
                       </span>
                       <span className={css.check}>
-                        {pending !== null && pending.provider === state.current?.provider
-                          && pending.model === state.current.model && pending.reasoningEffort === level.effort
+                        {pending !== null && pending.provider === (effortTarget ?? state.current)?.provider
+                          && pending.model === (effortTarget ?? state.current)?.model && pending.reasoningEffort === level.effort
                           ? <StateDot state="ongoing" />
-                          : effectiveEffort === level.effort ? <IconCheckOutlineRegular /> : null}
+                          : pickedEffort === level.effort ? <IconCheckOutlineRegular /> : null}
                       </span>
                     </button>
                   ))}

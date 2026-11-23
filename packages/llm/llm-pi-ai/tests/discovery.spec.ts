@@ -74,6 +74,34 @@ async function harness(): Promise<Context> {
 }
 
 describe('catalog-route model discovery', () => {
+  it.each(['anthropic-messages', 'openai-responses'])('discloses known CialloAPI reasoning efforts through %s', async (api) => {
+    const supported = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']
+    const fetch = vi.fn(async (input: string) => {
+      if (!new URL(input).searchParams.has('client_version')) {
+        return Response.json({ data: [...supported, 'unrecognized-model'].map(id => ({ id })) })
+      }
+      return Response.json({ models: [{
+        slug: supported[1], context_window: 1_000_000,
+        supported_reasoning_levels: [{ effort: 'low' }, { effort: 'high' }],
+        default_reasoning_level: 'high',
+      }, { slug: 'codex-only-model' }] })
+    })
+    vi.stubGlobal('fetch', fetch)
+    const ctx = await harness()
+    const models = await ctx.llm.discoverModels('llm-pi-ai', {
+      provider: 'cialloapi', baseURL: 'https://cialloapi.com/v1', api,
+    })
+    const reasoningEfforts = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
+    expect(models).toEqual([
+      { id: supported[0], name: supported[0], reasoningEfforts },
+      { id: supported[1], name: supported[1], contextWindow: 1_000_000,
+        reasoningEfforts: { low: 'low', high: 'high' }, defaultReasoningEffort: 'high' },
+      { id: supported[2], name: supported[2], reasoningEfforts },
+      { id: 'unrecognized-model', name: 'unrecognized-model' },
+    ])
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+
   it('includes the installed model input types for vision models', async () => {
     const ctx = await harness()
     const models = await ctx.llm.discoverModels('llm-pi-ai', { provider: 'openai' })

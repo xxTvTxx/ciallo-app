@@ -635,6 +635,8 @@ export interface PiAiModelProfile {
    * declares the offered levels and their wire spellings.
    */
   reasoningEfforts?: false | PiAiReasoningEfforts
+  /** Default reasoning effort for this model when the request does not specify one. */
+  defaultReasoningEffort?: ModelThinkingLevel
   /** pi-ai wire-compatibility switches for this model, winning over the route's per field; one its protocol does not declare is refused. */
   compat?: PiAiCompatProfile
 }
@@ -827,6 +829,25 @@ function resolveModelCompat(
   return { compat: { ...inherited, ...configured } as ModelCompat }
 }
 
+// CialloAPI's Claude effort catalog supplies these levels on its Anthropic endpoint.
+const CIALLO_ADAPTIVE_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'])
+const CIALLO_ADAPTIVE_EFFORTS: PiAiReasoningEfforts = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'max',
+}
+
+/** Known Claude effort mappings on CialloAPI's Anthropic and Responses endpoints. */
+export function cialloReasoningEfforts(
+  provider: string | undefined, api: string, baseURL: string, model: string,
+): PiAiReasoningEfforts | undefined {
+  if (provider !== 'cialloapi' || (api !== 'anthropic-messages' && api !== 'openai-responses')
+    || !CIALLO_ADAPTIVE_MODELS.has(model) || URL.parse(baseURL)?.origin !== 'https://cialloapi.com') return undefined
+  return CIALLO_ADAPTIVE_EFFORTS
+}
+
 /** One route's materialized catalog, plus the request caps its profile chose. */
 export interface RouteCatalog {
   /** The materialized models in configuration order. */
@@ -844,6 +865,19 @@ export interface RouteCatalog {
    * picked, so only an explicit configuration lands here.
    */
   configuredMaxTokens: ReadonlyMap<string, number>
+  /** Configured `defaultReasoningEffort` per model id, each validated against that model's selectable levels. */
+  defaultReasoningEfforts: ReadonlyMap<string, ModelThinkingLevel>
+}
+
+/** Return the effort ids accepted by this model's reasoning metadata. */
+export function getSupportedThinkingLevels(model: Model<Api>): ModelThinkingLevel[] {
+  if (!model.reasoning) return ['off']
+  return THINKING_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level]
+    if (mapped === null) return false
+    if (level === 'xhigh' || level === 'max') return mapped !== undefined
+    return true
+  })
 }
 
 /**
@@ -909,6 +943,7 @@ export function resolveRouteModels(
   assertOfferedCompatFields(provider, 'route', request.compat)
   const seen = new Set<string>()
   const configuredMaxTokens = new Map<string, number>()
+  const defaultReasoningEfforts = new Map<string, ModelThinkingLevel>()
   const resolveEntry = (entry: PiAiModelProfile): Model<Api> => {
     assertOfferedCompatFields(provider, `model "${entry.id}"`, entry.compat)
     if (entry.id.length === 0) invalid(provider, 'has a model with an empty id')
@@ -939,7 +974,12 @@ export function resolveRouteModels(
     // Only a value the profile named is a deployment choice; the catalog's is
     // the model's capability and stays out of request defaults.
     if (entry.maxTokens !== undefined) configuredMaxTokens.set(entry.id, entry.maxTokens)
-    return {
+    const cialloEfforts = cialloReasoningEfforts(provider, api, baseUrl, entry.id)
+    const reasoningEntry = cialloEfforts !== undefined && entry.reasoningEfforts === undefined
+      ? { ...entry, reasoningEfforts: cialloEfforts }
+      : entry
+    const compatibility = resolveModelCompat(provider, entry, request.compat, base, api)
+    const model: Model<Api> = {
       // The installed entry lays the floor, and the fields below override it.
       // Enumerating instead would silently drop every `Model` field this
       // package does not model — reasoning-level spellings, compatibility
@@ -955,9 +995,19 @@ export function resolveRouteModels(
       cost: base?.cost ?? NO_COST,
       contextWindow,
       maxTokens,
-      ...resolveModelReasoning(provider, entry, base),
-      ...resolveModelCompat(provider, entry, request.compat, base, api),
+      ...resolveModelReasoning(provider, reasoningEntry, base),
+      ...cialloEfforts !== undefined && api === 'anthropic-messages'
+        ? { compat: { forceAdaptiveThinking: true, ...compatibility.compat } }
+        : compatibility,
     }
+    const defaultEffort = entry.defaultReasoningEffort
+    if (defaultEffort !== undefined) {
+      if (!model.reasoning || !getSupportedThinkingLevels(model).includes(defaultEffort)) {
+        invalid(provider, `model "${entry.id}" does not support default reasoning effort "${defaultEffort}"`)
+      }
+      defaultReasoningEfforts.set(entry.id, defaultEffort)
+    }
+    return model
   }
   const models: Model<Api>[] = []
   for (const entry of entries) {
@@ -983,5 +1033,5 @@ export function resolveRouteModels(
     invalid(provider, `sets compat "${field}", but no model on the route speaks a protocol that takes it;`
       + ` it exists on ${takers.join(', ')}`)
   }
-  return { models: serviceableModels, configuredMaxTokens, modelErrors }
+  return { models: serviceableModels, configuredMaxTokens, defaultReasoningEfforts, modelErrors }
 }

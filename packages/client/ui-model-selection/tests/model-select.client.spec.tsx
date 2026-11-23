@@ -208,6 +208,34 @@ describe('ModelSelect catalog badges', () => {
 })
 
 describe('ModelSelect reasoning effort', () => {
+  it('moves from another model to that model’s effort picker and submits once', async () => {
+    const initial = state()
+    const group = initial.groups[0]!
+    const directory = createSnapshotStore(state({
+      groups: [{ ...group, models: [...group.models, {
+        id: 'reasoner', name: 'Reasoner', reasoning: {
+          efforts: [{ id: 'low', name: 'Low' }, { id: 'medium', name: 'Medium' }],
+          defaultEffort: 'low',
+        },
+      }] }],
+    }))
+    const select = vi.fn().mockResolvedValue({ ok: true, value: undefined })
+    render(<ModelSelect renderSlot={renderLabel} locked={false} available directory={directory}
+      load={vi.fn()} resolveText={resolveText} select={select} t={t} />)
+    fireEvent.click(screen.getByRole('button', { name: /选择模型/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Reasoner' }))
+    expect(select).not.toHaveBeenCalled()
+    expect(screen.getByRole('menuitemradio', { name: 'Low', checked: true })).toBeTruthy()
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Medium' }))
+    await waitFor(() => {
+      expect(select).toHaveBeenCalledExactlyOnceWith({
+        provider: 'deepseek-official', model: 'reasoner', reasoningEffort: 'medium',
+      })
+      expect(screen.queryByRole('menuitemradio', { name: 'Medium' })).toBeNull()
+    })
+  })
+
   it('renders effort names without descriptions and submits the effort as part of the session selection', async () => {
     const directory = createSnapshotStore<ModelDirectoryState>(state())
     const select = vi.fn(async (selection: ModelSelection) => {
@@ -952,6 +980,7 @@ describe('ModelSelect search', () => {
     fireEvent.click(trigger)
     fireEvent.click(screen.getByRole('menuitem', { name: /模型/ }))
     fireEvent.keyDown(screen.getByRole('searchbox'), { key })
+    fireEvent.click(screen.getByRole('menuitemradio', { checked: true }))
     await waitFor(() => { expect(document.activeElement).toBe(trigger) })
     expect(trigger.hasAttribute('data-selection-focus')).toBe(true)
     expect(select).not.toHaveBeenCalled()
