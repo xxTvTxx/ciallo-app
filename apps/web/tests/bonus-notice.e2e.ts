@@ -258,7 +258,8 @@ async function platformCalls(page: Page): Promise<readonly string[]> {
     .__bonusPlatformCalls ?? [])
 }
 
-describe.skipIf(MODE === 'record')('web e2e: bonus notice', () => {
+// This distribution disables the DeepSeek account UI (ui-settings-account) and its notifications (ui-account-notifications).
+describe.skip('web e2e: bonus notice', () => {
   let root: string | undefined
   let scaffold: WebScaffold
   let browser: Browser

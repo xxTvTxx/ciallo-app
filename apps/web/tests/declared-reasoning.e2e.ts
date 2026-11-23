@@ -1,5 +1,5 @@
 // Web e2e scenario: a hand-declared model's `reasoningEfforts` reaches the
-// composer's effort pane — the levels a settings profile declares are exactly
+// composer's effort chips — the levels a settings profile declares are exactly
 // what the picker offers, and picking one records it with the Agent default.
 // Zero model calls: declaring, describing, and switching are settings/llm
 // traffic only, so there is no fixture and a stray stream would fail loud.
@@ -75,34 +75,30 @@ describe.skipIf(MODE === 'record').each([
     const trigger = page.getByRole('button', { name: /^选择模型/ })
     await trigger.waitFor({ timeout: 15_000 })
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
 
     // Declared levels, nothing else: the provider-default entry (the route
     // configures no `reasoning`), then Off/High/Max — minimal, low, medium,
-    // and xhigh were not declared and must not be offered.
-    const levels = page.getByRole('menuitemradio')
+    // and xhigh were not declared and must not be offered. The current model
+    // is expanded on opening, so its chips show below its row.
+    const levels = page.locator('[data-model-chip="effort"]')
     await expect.poll(async () => levels.allTextContents(), { timeout: 10_000 })
       .toEqual(['Default', 'Off', 'High', 'Max'])
-    const snapshot = await captureStableAria(page, '[role="menu"]', scaffold.workspaceCwd)
+    const snapshot = await captureStableAria(page, '[data-model-settings] [role="group"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(UI_EXPECTED, snapshot, MODE)
 
-    // Keyboard: the clicked cell unmounts with its pane, so the drilled pane's
-    // checked row takes the focus it left behind. ↑↓ walk the rows from there
-    // and Tab settles the focused one exactly as Enter would.
-    await expect.poll(
-      () => levels.nth(0).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
-    await page.keyboard.press('ArrowDown')
-    await expect.poll(
-      () => levels.nth(1).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
-    await page.keyboard.press('ArrowDown')
-    await expect.poll(
-      () => levels.nth(2).evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    // Keyboard: search holds focus with the current model highlighted; ↓ steps
+    // from that model onto its chips, and Tab settles the focused one exactly
+    // as Enter would.
+    const search = page.getByRole('searchbox', { name: '搜索模型…' })
+    await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement), { timeout: 10_000 })
+      .toBe(true)
+    for (const index of [0, 1, 2]) {
+      await page.keyboard.press('ArrowDown')
+      await expect.poll(
+        () => levels.nth(index).evaluate(element => element === document.activeElement),
+        { timeout: 10_000 },
+      ).toBe(true)
+    }
 
     // Settling with Tab is the same gesture that saves the default selection, so
     // the effort lands in the Agent default Settings section beside provider/model.
@@ -115,44 +111,29 @@ describe.skipIf(MODE === 'record').each([
     await expect.poll(() => trigger.getAttribute('aria-label'), { timeout: 10_000 })
       .toBe('选择模型，当前 Acme Think，推理等级 High')
 
-    // Reopening the drilled pane parks the keyboard on the level in use, and
-    // Shift+Tab walks back out like Escape: to the drilled cell, then closed.
+    // Reopening checks the level in use, and Shift+Tab closes like Escape.
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
-    const high = page.getByRole('menuitemradio', { name: 'High' })
-    await expect.poll(
-      () => high.evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
+    await expect.poll(() => page.locator('[data-model-chip="effort"][aria-checked="true"]').allTextContents(), { timeout: 10_000 })
+      .toEqual(['High'])
     await page.keyboard.press('Shift+Tab')
-    await expect.poll(
-      () => page.getByRole('menuitem', { name: /推理等级/ })
-        .evaluate(element => element === document.activeElement),
-      { timeout: 10_000 },
-    ).toBe(true)
-    await page.keyboard.press('Shift+Tab')
-    await expect.poll(() => page.getByRole('menu').count(), { timeout: 10_000 }).toBe(0)
+    await expect.poll(() => page.locator('[data-model-menu]').count(), { timeout: 10_000 }).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
-  it('opens from the pointer with keyboard focus and closes from the trigger in every pane', async () => {
+  it('opens from the pointer with keyboard focus and closes from the trigger, expanded or not', async () => {
     onTestFailed(() => saveFailureShot(page, `web-e2e-model-trigger-${engine.name()}`))
     const trigger = page.getByRole('button', { name: /^选择模型/ })
-    const menu = page.getByRole('menu')
-    for (const pane of ['root', 'model', 'effort']) {
+    const menu = page.locator('[data-model-menu]')
+    for (const expand of [false, true]) {
       await page.locator('[data-composer-input][contenteditable="true"]').focus()
       await trigger.click()
-      await expect.poll(() => trigger.evaluate(element => element === document.activeElement)).toBe(true)
-      if (pane === 'root') {
-        await page.keyboard.press('ArrowDown')
-        await expect.poll(() => page.getByRole('menuitem', { name: /^模型/ })
-          .evaluate(element => element === document.activeElement)).toBe(true)
-      } else {
-        await page.getByRole('menuitem', { name: pane === 'model' ? /^模型/ : /推理等级/ }).click()
-        const focused = pane === 'model'
-          ? page.getByRole('searchbox', { name: '搜索模型…' })
-          : page.locator('[role="menuitemradio"][aria-checked="true"]')
-        await expect.poll(() => focused.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+      const search = page.getByRole('searchbox', { name: '搜索模型…' })
+      await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+      if (expand) {
+        // Another model expands without saving, with focus on its checked effort.
+        await page.getByRole('menuitemradio', { name: 'Acme Swift', exact: true }).click()
+        const checked = page.locator('[data-model-chip="effort"][aria-checked="true"]')
+        await expect.poll(() => checked.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
       }
       await trigger.click()
       await menu.waitFor({ state: 'detached' })
@@ -170,9 +151,8 @@ describe.skipIf(MODE === 'record').each([
     page.on('request', countSelection)
     onTestFinished(() => { page.off('request', countSelection) })
     const trigger = page.getByRole('button', { name: /^选择模型/ })
-    const menu = page.getByRole('menu')
+    const menu = page.locator('[data-model-menu]')
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
     const current = page.getByRole('menuitemradio', { name: 'Acme Think', exact: true })
     const target = page.getByRole('menuitemradio', { name: 'Acme Swift', exact: true })
     const search = page.getByRole('searchbox', { name: '搜索模型…' })
@@ -191,25 +171,30 @@ describe.skipIf(MODE === 'record').each([
     }
     // Later selection counts also include any request from this cancelled press.
     expect(selections).toBe(0)
-    await search.press('ArrowUp')
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await current.getAttribute('id'))
-    await search.press('ArrowDown')
+    // The hover highlighted the target; ↑ steps onto the current model's last
+    // chip, and ↓ returns to search on the target.
     expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
+    await search.press('ArrowUp')
+    const max = page.getByRole('menuitemradio', { name: 'Max', exact: true })
+    await expect.poll(() => max.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+    await page.keyboard.press('ArrowDown')
     await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
+    expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
     await page.keyboard.press('Escape')
-    await page.keyboard.press('Shift+Tab')
     await menu.waitFor({ state: 'detached' })
 
+    // Another model with effort levels expands first; its chip saves the selection.
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
     await target.getByText('Acme Swift', { exact: true }).click()
+    await page.getByRole('menuitemradio', { name: 'Default', exact: true, checked: true }).waitFor()
+    expect(selections).toBe(0)
+    await page.getByRole('menuitemradio', { name: 'Default', exact: true }).click()
     await menu.waitFor({ state: 'detached' })
     expect(selections).toBe(1)
     await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection().model, { timeout: 10_000 })
       .toBe('acme-swift')
 
     await trigger.click()
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
     await page.getByRole('menuitemradio', { name: 'Max', exact: true }).click()
     await menu.waitFor({ state: 'detached' })
     expect(selections).toBe(2)
@@ -229,10 +214,10 @@ describe.skipIf(MODE === 'record').each([
       })
     }, { times: 1 })
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
     await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
     expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
     await current.click()
+    await page.getByRole('menuitemradio', { name: 'High', exact: true }).click()
     await page.getByRole('alert').waitFor()
     expect(selections).toBe(3)
     await compareOrRefreshGolden(POINTER_EXPECTED,
@@ -242,14 +227,12 @@ describe.skipIf(MODE === 'record').each([
     await expect.poll(() => search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
     expect(await search.getAttribute('aria-activedescendant')).toBe(await target.getAttribute('id'))
     await search.press('ArrowUp')
-    expect(await search.getAttribute('aria-activedescendant')).toBe(await current.getAttribute('id'))
-    expect(await search.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
-    await page.keyboard.press('Escape')
+    // The rejected pick stays expanded: ↑ from the target lands on its last chip.
+    await expect.poll(() => max.evaluate(element => element === element.ownerDocument.activeElement)).toBe(true)
     await page.keyboard.press('Escape')
     await menu.waitFor({ state: 'detached' })
 
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^模型/ }).click()
     await page.locator('[data-composer-input][contenteditable="true"]').focus()
     await menu.waitFor({ state: 'detached' })
     await trigger.click()

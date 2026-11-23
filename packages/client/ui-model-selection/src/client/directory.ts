@@ -33,13 +33,18 @@ export interface ModelDirectoryState {
   pending: ModelSelection | null
   /** Whole-request or selection failure text; null when none. */
   error: string | null
+  /** This Session's prompt-cache lifetime choice; null while it follows the model's default. */
+  cacheRetention: CacheRetention | null
 }
+
+/** Prompt-cache lifetime: `short` (five minutes) or `long` (one hour). */
+export type CacheRetention = 'short' | 'long'
 
 /** One session's shared directory controller; disposed with the session scope. */
 export class ModelDirectory {
   /** The shared snapshot both entries render from (uSES-safe store). */
   readonly store: SnapshotStore<ModelDirectoryState> = createSnapshotStore<ModelDirectoryState>({
-    current: null, routable: null, groups: [], failures: [], status: 'idle', pending: null, error: null,
+    current: null, routable: null, groups: [], failures: [], status: 'idle', pending: null, error: null, cacheRetention: null,
   })
 
   /** Latest selection operation wins; an older response never overwrites a newer one. */
@@ -50,6 +55,7 @@ export class ModelDirectory {
 
   /**
    * @param sessions - the session wire face (captured from the plugin's root connection).
+   * @param cache - the per-Session prompt-cache lifetime wire face.
    * @param sessionId - the owning session.
    * @param available - whether this session may use Agent-bound model RPCs.
    * @param catalog - Host-generation catalog shared by every Session.
@@ -59,6 +65,7 @@ export class ModelDirectory {
    */
   constructor(
     private readonly sessions: Pick<TypertClientRemote['session'], 'selectModel'>,
+    private readonly cache: Pick<TypertClientRemote['llm'], 'sessionCacheRetention' | 'setSessionCacheRetention'>,
     private readonly sessionId: SessionId,
     private readonly available: () => boolean,
     private readonly catalog: ModelCatalogDirectory,
@@ -77,9 +84,26 @@ export class ModelDirectory {
    */
   async load(): Promise<ModelDirectoryState> {
     this.assertAvailable()
+    const choice = this.cache.sessionCacheRetention(this.sessionId)
     await this.catalog.load()
+    const result = await choice
+    // An unreadable choice keeps the last known one; the lifetime row stays usable.
+    if (result.ok && !this.disposed) this.store.update((s) => { s.cacheRetention = result.value.retention ?? null })
     this.syncInputs()
     return this.store.getSnapshot()
+  }
+
+  /**
+   * Choose this Session's prompt-cache lifetime. Later requests of the Session
+   * and its subagents use it; route configuration is unchanged.
+   * @param retention - lifetime to use, or null to follow the model default again.
+   * @returns the Host outcome.
+   */
+  async setCacheRetention(retention: CacheRetention | null): Promise<RemoteResult<void>> {
+    this.assertAvailable()
+    const result = await this.cache.setSessionCacheRetention(this.sessionId, retention)
+    if (result.ok && !this.disposed) this.store.update((s) => { s.cacheRetention = retention })
+    return result
   }
 
   /**
@@ -174,6 +198,7 @@ export class ModelDirectory {
         status: catalog.status === 'error' ? 'error' : 'loading',
         pending: this.store.getSnapshot().pending,
         error: catalog.error,
+        cacheRetention: this.store.getSnapshot().cacheRetention,
       })
       return
     }
@@ -191,6 +216,7 @@ export class ModelDirectory {
         : 'ready',
       pending: this.store.getSnapshot().pending,
       error: null,
+      cacheRetention: this.store.getSnapshot().cacheRetention,
     })
   }
 }

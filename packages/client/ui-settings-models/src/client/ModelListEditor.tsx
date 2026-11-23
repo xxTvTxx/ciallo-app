@@ -137,8 +137,12 @@ function capacitySpelling(value: number | undefined): string {
   return value === undefined ? '' : formatCapacity(value)
 }
 
-/** Adopt a candidate, preserving disclosed capacities and input types. */
-function adopt(candidate: LlmDiscoveredModel): ModelDraft {
+/**
+ * Adopt a candidate, preserving disclosed capacities, input types, and reasoning levels.
+ * @param candidate - one model the provider disclosed.
+ * @returns the model row a profile stores for it.
+ */
+export function adoptCandidate(candidate: LlmDiscoveredModel): ModelDraft {
   return {
     id: candidate.id,
     ...candidate.name === undefined ? {} : { name: candidate.name },
@@ -273,7 +277,7 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
   const keptIds = new Set(keptRows.map(model => textOf(model, 'id')))
   const addedRows = activeCandidates
     .filter(candidate => isPicked(candidate.id) && !keptIds.has(candidate.id))
-    .map(adopt)
+    .map(adoptCandidate)
   // An empty list serves the whole catalog, so emptying a non-empty list
   // would restore every model instead of removing the unchecked ones.
   const emptiesList = models.length > 0 && keptRows.length === 0 && addedRows.length === 0

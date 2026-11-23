@@ -107,8 +107,35 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
       return Promise.resolve({ ok: true as const, value: { selected } })
     },
   }
-  const remote = Object.assign(new TestRemote(ctx), { session: sessionRemote })
+  // Per-Session prompt-cache lifetime choices the fake Host holds.
+  const retentions = new Map<SessionId, 'short' | 'long'>()
+  let cacheFailure: RemoteError<'session/writer-held'> | undefined
+  let cacheReadFailure = false
+  // While set, cache answers wait for it, so a test can settle them after teardown.
+  let cacheGate: Promise<void> | undefined
+  const cacheCalls: Array<['read', SessionId] | ['write', SessionId, 'short' | 'long' | null]> = []
+  const llmRemote = {
+    sessionCacheRetention: async (sessionId: SessionId) => {
+      cacheCalls.push(['read', sessionId])
+      await cacheGate
+      if (cacheReadFailure) {
+        return { ok: false as const, error: new RemoteError('session/writer-held', 'unreadable', { sessionId }) }
+      }
+      const retention = retentions.get(sessionId)
+      return { ok: true as const, value: retention === undefined ? {} : { retention } }
+    },
+    setSessionCacheRetention: async (sessionId: SessionId, retention: 'short' | 'long' | null) => {
+      cacheCalls.push(['write', sessionId, retention])
+      await cacheGate
+      if (cacheFailure !== undefined) return { ok: false as const, error: cacheFailure }
+      if (retention === null) retentions.delete(sessionId)
+      else retentions.set(sessionId, retention)
+      return { ok: true as const, value: undefined }
+    },
+  }
+  const remote = Object.assign(new TestRemote(ctx), { session: sessionRemote, llm: llmRemote })
   ctx.reflect.provide('remote.session', sessionRemote)
+  ctx.reflect.provide('remote.llm', llmRemote)
   const blocks = new Map<SessionId, { reason: string } | undefined>()
   ctx.provide('conversation', {
     blocks: {
@@ -201,6 +228,20 @@ async function bench(locale: 'zh' | 'en' = 'zh') {
     setCatalogFailure: (next: boolean) => { catalogFailure = next },
     setRoutable: (next: boolean) => { routable = next },
     blockOf: (key: string) => blocks.get(sid(key)),
+    cacheCalls,
+    setStoredRetention: (id: SessionId, retention: 'short' | 'long') => { retentions.set(id, retention) },
+    rejectCacheWrites: () => {
+      cacheFailure = new RemoteError('session/writer-held', 'writer held', { sessionId: sid('owned') })
+    },
+    setCacheReadFailure: (next: boolean) => { cacheReadFailure = next },
+    holdCache: () => {
+      let release!: () => void
+      cacheGate = new Promise((resolve) => { release = resolve })
+      return () => {
+        cacheGate = undefined
+        release()
+      }
+    },
   }
 }
 
@@ -587,4 +628,96 @@ it.each([false, true])('reports accepted switches with blank=%s and no refused s
     await face.select({ provider: 'deepseek-official', model: 'deepseek-v4-flash' })
     expect(b.track).not.toHaveBeenCalled()
   } finally { await scope.fiber.dispose(); await b.ctx.fiber.dispose() }
+})
+
+describe('session prompt-cache lifetime', () => {
+  it('reads the Session choice on load and follows the model default without one', async () => {
+    const b = await bench()
+    try {
+      b.mint('long')
+      b.mint('plain')
+      b.setStoredRetention(sid('long'), 'long')
+      const long = b.ctx.modelDirectories.directoryFor(sid('long'))
+      const plain = b.ctx.modelDirectories.directoryFor(sid('plain'))
+      expect(long.store.getSnapshot().cacheRetention).toBeNull()
+      expect((await long.load()).cacheRetention).toBe('long')
+      expect((await plain.load()).cacheRetention).toBeNull()
+      expect(b.cacheCalls).toEqual([['read', 'long'], ['read', 'plain']])
+      // Catalog refreshes keep the Session choice.
+      b.remote.emit('llm/models-updated', ['deepseek-official'])
+      await vi.waitFor(() => { expect(long.store.getSnapshot().status).toBe('ready') })
+      expect(long.store.getSnapshot().cacheRetention).toBe('long')
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
+  it('keeps the last known choice when the Host cannot read it', async () => {
+    const b = await bench()
+    try {
+      b.mint('s1')
+      b.setStoredRetention(sid('s1'), 'long')
+      const directory = b.ctx.modelDirectories.directoryFor(sid('s1'))
+      await directory.load()
+      b.setCacheReadFailure(true)
+      expect((await directory.load()).cacheRetention).toBe('long')
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
+  it('publishes a recorded choice through the seat face and reports a refused one unchanged', async () => {
+    const b = await bench()
+    try {
+      b.mint('s1')
+      const face = b.seat().inject!(sid('s1'))
+      await expect(face.selectCacheRetention('long')).resolves.toEqual({ ok: true, value: undefined })
+      expect(face.directory.getSnapshot().cacheRetention).toBe('long')
+      await face.selectCacheRetention(null)
+      expect(face.directory.getSnapshot().cacheRetention).toBeNull()
+      b.rejectCacheWrites()
+      const refused = await face.selectCacheRetention('short')
+      expect(refused).toMatchObject({ ok: false, error: { code: 'session/writer-held' } })
+      expect(face.directory.getSnapshot().cacheRetention).toBeNull()
+      expect(b.cacheCalls.filter(call => call[0] === 'write')).toEqual([
+        ['write', 's1', 'long'], ['write', 's1', null], ['write', 's1', 'short'],
+      ])
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
+  it('stops writing the store after Session scope disposal', async () => {
+    const b = await bench()
+    try {
+      const scope = b.mint('s1')
+      b.setStoredRetention(sid('s1'), 'long')
+      const directory = b.ctx.modelDirectories.directoryFor(sid('s1'))
+      const release = b.holdCache()
+      const loading = directory.load()
+      const choosing = directory.setCacheRetention('short')
+      await scope.fiber.dispose()
+      release()
+      await loading
+      await expect(choosing).resolves.toEqual({ ok: true, value: undefined })
+      expect(directory.store.getSnapshot().cacheRetention).toBeNull()
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
+
+  it('withholds cache choices from addressed subagent sessions', async () => {
+    const b = await bench()
+    try {
+      b.mint('child')
+      b.address(sid('child'))
+      const face = b.seat().inject!(sid('child'))
+      await expect(face.selectCacheRetention('long')).resolves.toBeUndefined()
+      await expect(b.ctx.modelDirectories.directoryFor(sid('child')).setCacheRetention('long'))
+        .rejects.toThrow(/unavailable for addressed subagent/)
+      expect(b.cacheCalls).toEqual([])
+    } finally {
+      await b.ctx.fiber.dispose()
+    }
+  })
 })

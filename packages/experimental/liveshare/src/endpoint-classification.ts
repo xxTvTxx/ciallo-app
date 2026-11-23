@@ -226,6 +226,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'permissionPresets/catalog': 'owner-only', // owner permission presets
   'permissionPresets/set': 'owner-only', // owner switches the sandbox and approval preset; a viewer may not call it at any tier
   'llm/discoverModels': 'owner-only', // owner discovers models
+  'llm/sessionCacheRetention': 'owner-only', // owner reads a Session's prompt-cache lifetime choice
+  'llm/setSessionCacheRetention': 'owner-only', // owner chooses a Session's prompt-cache lifetime
   'web/listProviders': 'owner-only', // owner web search and fetch settings
   'agentPresets/list': 'owner-only', // owner agent presets
   'agentPresets/read': 'owner-only', // owner agent presets

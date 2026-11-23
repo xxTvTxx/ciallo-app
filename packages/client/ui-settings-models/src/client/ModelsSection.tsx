@@ -1,12 +1,11 @@
 /**
- * Models settings section: the provider rows joined from the configurable
- * directory, settings namespaces, and credential states, with one editor
- * card at a time. Rows retain the account-first order supplied by the store
- * and expose only confirmed API-key state through accessible
- * solid configured or missing dots. A whole-section provider without a
- * configured key renders as its open setup card instead of a row, but only in
- * the first-run posture — no provider on the page can serve requests yet — and
- * only until the user closes that card. The add flow is one card behind one
+ * Models settings section: the CialloAPI default card, then the provider rows
+ * joined from the configurable directory, settings namespaces, and credential
+ * states, with one editor card at a time. Rows retain the account-first order
+ * supplied by the store and expose only confirmed API-key state through
+ * accessible solid configured or missing dots. CialloAPI group routes appear
+ * only in the CialloAPI card, and a whole-section provider whose key is
+ * confirmed missing appears only in the add card. The add flow is one card behind one
  * button: a mode switch chooses between adopting a dormant directory provider
  * (the catalog select over the provider editor) and declaring a custom model
  * API (the create form). A panel mounts the first time its mode is shown and
@@ -29,8 +28,10 @@ import type { LlmNativeAuth, SettingsNamespaceView } from '@deepseek-ai/dsh-api-
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
 import { CustomProviderCard } from './CustomProviderCard.tsx'
-import { CIALLO_API, cialloApiProtocols } from './ciallo-api.ts'
-import { deriveKeyRef, protocolChoices, providerUsable, reasoningLevelChoices } from './store.ts'
+import { cialloApiProtocols } from './ciallo-api.ts'
+import { isCialloRoute } from './ciallo-groups.ts'
+import { CialloApiCard } from './CialloApiCard.tsx'
+import { deriveKeyRef, protocolChoices, reasoningLevelChoices } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
@@ -99,12 +100,6 @@ interface EditorTarget extends ProviderIdentity {
   baseURLEnv?: readonly string[]
   /** The route's native authentication (see {@link ProviderEditorProps.nativeAuth}). */
   nativeAuth?: LlmNativeAuth
-}
-
-const CIALLO_API_TARGET: EditorTarget = {
-  ...CIALLO_API,
-  settingsNs: 'llm-pi-ai',
-  settingsPath: ['providers', CIALLO_API.provider],
 }
 
 /** A dormant directory row the add card can adopt, with its registered namespace. */
@@ -177,18 +172,25 @@ export async function removeProviderProfile(
 }
 
 /**
- * Whether a whole-section provider still needs its first key: an unconfigured
- * credential opens the setup card instead of showing a row. This is the
- * first-run posture alone — a user who can already reach some provider gets an
- * ordinary row with the missing-key dot, since nothing here is blocking them.
+ * Whether a configured row is a whole-section provider whose key is confirmed
+ * missing, such as DeepSeek API before its key is entered. Such a provider is
+ * offered by the add card instead of occupying a row, and becomes an ordinary
+ * row once its key is stored.
  * @param row - the joined provider row.
- * @param anyUsable - whether any joined row can already serve requests.
- * @returns whether to render the setup card.
+ * @returns whether the row is listed only as an addable provider.
  */
-export function needsSetup(row: ProviderRow, anyUsable: boolean): boolean {
-  if (anyUsable || row.entry.provider === 'deepseek-account') return false
-  if (row.entry.settingsPath.length > 0) return false
-  return row.credential?.configured !== true
+export function dormantSection(row: ProviderRow): boolean {
+  return row.configured && row.entry.provider !== 'deepseek-account' && row.entry.settingsPath.length === 0
+    && row.entry.error === undefined && row.apiKeyEnv !== undefined && row.credential?.configured === false
+}
+
+/**
+ * Whether a row is a CialloAPI group, which the CialloAPI card lists instead of the provider rows.
+ * @param row - the joined provider row.
+ * @returns whether the row belongs to the CialloAPI card.
+ */
+export function cialloRow(row: ProviderRow): boolean {
+  return row.entry.settingsNs === 'llm-pi-ai' && isCialloRoute(row.entry.provider)
 }
 
 /**
@@ -274,7 +276,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const [deleting, setDeleting] = useState(false)
   const [deleteFailure, setDeleteFailure] = useState<string | undefined>(undefined)
   const [savedTarget, setSavedTarget] = useState<ProviderIdentity | undefined>(undefined)
-  const [dismissedSetup, setDismissedSetup] = useState<ReadonlySet<string>>(() => new Set())
 
   const announceSaved = (target: ProviderIdentity): void => {
     // Announced only once the refreshed directory is in the snapshot the
@@ -299,18 +300,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
 
   const closeEditor = (changed: boolean, target: ProviderIdentity): void => {
     closeAdd()
-    if (changed) announceSaved(target)
-  }
-
-  /**
-   * Close a setup card, which owns none of the state above: the row-editor
-   * and add cards each own one of those, so clearing them here would discard
-   * a draft the user opened beside this card. Dismissal is this card's own —
-   * the provider falls back to an ordinary row for the rest of the session,
-   * and reopens through Edit.
-   */
-  const closeSetup = (changed: boolean, target: ProviderIdentity): void => {
-    setDismissedSetup(previous => new Set([...previous, target.provider]))
     if (changed) announceSaved(target)
   }
 
@@ -369,14 +358,16 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
     ? savedTarget
     : { provider: savedRow.entry.provider, displayName: savedRow.entry.displayName }
 
-  // One fact decides both first-run postures on this page and the onboarding
-  // step: whether the user already has a provider to talk to.
-  const anyUsable = state.rows.some(providerUsable)
-  const configured = state.rows.filter(row => row.configured)
-  const configurable = state.rows.filter(row => state.namespaces.has(row.entry.settingsNs))
-  const addable: AddableRow[] = state.rows.flatMap((row) => {
+  // CialloAPI groups live in their own card; a whole-section provider still
+  // waiting for its key is offered by the add card rather than listed.
+  const configured = state.rows.filter(row => row.configured && !cialloRow(row) && !dormantSection(row))
+  const cialloRows = state.rows.filter(row => row.configured && cialloRow(row))
+  const configurable = state.rows.filter(row => state.namespaces.has(row.entry.settingsNs) && !cialloRow(row))
+  const addable: AddableRow[] = configurable.flatMap((row) => {
     const namespace = state.namespaces.get(row.entry.settingsNs)
-    return namespace === undefined || row.configured ? [] : [{ row, namespace }]
+    /* v8 ignore next -- configurable rows have a mounted namespace */
+    if (namespace === undefined) return []
+    return row.configured && !dormantSection(row) ? [] : [{ row, namespace }]
   })
   // Hand-declared routes live in the pi-ai namespace, which is also the only
   // one whose schema names the protocols one may speak; without it mounted
@@ -386,20 +377,14 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const reasoningLevels = reasoningLevelChoices(piAi, schema)
   const cialloProtocols = cialloApiProtocols(protocols)
   const providerIds = state.rows.map(row => row.entry.provider)
-  const cialloOffered = cialloProtocols.length > 0
-    && (editing === CIALLO_API_TARGET || (
-      configurable.some(row => row.entry.settingsNs === CIALLO_API_TARGET.settingsNs)
-      && !providerIds.includes(CIALLO_API.provider)
-      && !schema.hasPath(piAi?.value, CIALLO_API_TARGET.settingsPath)
-    ))
   // Each mode is offered while its namespace is mounted and enabled while it
   // has something to offer; the card shows the chosen mode where both are
   // offered, else the only one there is. A mode's panel is mounted while it is
   // the shown mode or has been shown since the card opened — derived, so a
   // refresh that changes which modes are offered can never leave the card
   // without a panel.
-  const catalogOffered = configurable.length > 0 || cialloOffered
-  const catalogEnabled = addable.length > 0 || cialloOffered
+  const catalogOffered = configurable.length > 0
+  const catalogEnabled = addable.length > 0
   const customOffered = piAi !== undefined
   const customEnabled = protocols.length > 0
   const bothOffered = catalogOffered && customOffered
@@ -414,12 +399,9 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const draft = ((): CatalogDraft | undefined => {
     if (!addOpen || !catalogOffered) return undefined
     const kept = editing === undefined ? undefined : state.namespaces.get(editing.settingsNs)
-    if (editing !== undefined && kept !== undefined && (editing !== CIALLO_API_TARGET || cialloOffered)) {
-      return { target: editing, namespace: kept }
-    }
+    if (editing !== undefined && kept !== undefined) return { target: editing, namespace: kept }
     const first = addable[0]
-    if (first !== undefined) return { target: targetOf(first.row), namespace: first.namespace }
-    return cialloOffered && piAi !== undefined ? { target: CIALLO_API_TARGET, namespace: piAi } : undefined
+    return first === undefined ? undefined : { target: targetOf(first.row), namespace: first.namespace }
   })()
   // The draft's directory row, for the card extension seat. A refresh can drop
   // the row mid-draft (the route was adopted or withdrawn elsewhere); the
@@ -427,7 +409,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   const addRow = draft === undefined
     ? undefined
     : state.rows.find(row => row.entry.provider === draft.target.provider)
-  const cialloSelected = draft?.target === CIALLO_API_TARGET
 
   return (
     <div className={styles['section']}>
@@ -443,6 +424,28 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             {providerCopy(t('savedProvider'), savedIdentity)}
           </p>
         )}
+      {piAi !== undefined && cialloProtocols.length > 0
+        ? (
+          <CialloApiCard
+            rows={cialloRows}
+            namespace={piAi}
+            protocols={cialloProtocols}
+            taken={providerIds}
+            operations={operations}
+            t={t}
+            readOnly={!state.writable}
+            refreshing={state.status !== 'ready'}
+            onSaved={(target) => { setSavedTarget(undefined); announceSaved(target) }}
+            onChanged={() => { void controller.load() }}
+            onDelete={(row) => {
+              if (controller.store.getSnapshot().status !== 'ready') return
+              setSavedTarget(undefined)
+              setDeleteFailure(undefined)
+              setDeleteTarget(targetOf(row))
+            }}
+          />
+        )
+        : null}
       <ul className={styles['rows']}>
         {configured.map((row) => {
           const target = targetOf(row)
@@ -452,30 +455,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
           const error = row.entry.error === undefined
             ? null
             : <p role="alert" className={styles['error']}>{row.entry.error}</p>
-          if (needsSetup(row, anyUsable) && !dismissedSetup.has(row.entry.provider)) {
-            // First-run posture: the provider exists but has no key — the
-            // setup card IS its presence on the page, until the user closes it.
-            return (
-              <li key={row.entry.provider} className={styles['setupCard']}>
-                {error}
-                {renderProviderEditor({
-                  target,
-                  row,
-                  namespace,
-                  schema,
-                  operations,
-                  t,
-                  readOnly: !state.writable,
-                  onClose: (changed) => { closeSetup(changed, target) },
-                })}
-                {renderSlot(
-                  'settings.models.provider-card',
-                  { provider: row.entry, configured: row.configured, keyConfigured: keyConfiguredOf(row) },
-                  { entryKey: row.entry.settingsNs },
-                )}
-              </li>
-            )
-          }
           const open = !addOpen && editing?.provider === row.entry.provider
           const credentialConfigured = row.credential?.configured === true
           const credentialMissing = !credentialConfigured
@@ -645,34 +624,18 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                         aria-label={t('provider')}
                         disabled={catalogBusy}
                         onChange={(event) => {
-                          if (cialloOffered && event.target.value === CIALLO_API.provider) {
-                            setEditing(CIALLO_API_TARGET)
-                            return
-                          }
                           const picked = addable.find(candidate => candidate.row.entry.provider === event.target.value)
                           /* v8 ignore next -- the select only lists addable rows */
                           if (picked === undefined) return
                           setEditing(targetOf(picked.row))
                         }}
                       >
-                        {cialloOffered ? <option value={CIALLO_API.provider}>{CIALLO_API.displayName}</option> : null}
                         {addable.map(({ row }) => (
                           <option key={row.entry.provider} value={row.entry.provider}>{row.entry.displayName}</option>
                         ))}
                       </select>
                     </div>
-                    {cialloSelected ? <CustomProviderCard
-                      cialloApi
-                      taken={providerIds}
-                      protocols={cialloProtocols}
-                      reasoningLevels={reasoningLevels}
-                      revision={draft.namespace.revision}
-                      operations={operations}
-                      t={t}
-                      readOnly={!state.writable}
-                      onClose={(changed) => { closeEditor(changed, CIALLO_API_TARGET) }}
-                      onBusyChange={setCatalogBusy}
-                    /> : <ProviderEditor
+                    <ProviderEditor
                       key={draft.target.provider}
                       provider={draft.target.provider}
                       displayName={draft.target.displayName}
@@ -689,8 +652,8 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                       readOnly={!state.writable}
                       onClose={(changed) => { closeEditor(changed, draft.target) }}
                       onBusyChange={setCatalogBusy}
-                    />}
-                    {cialloSelected || addRow === undefined
+                    />
+                    {addRow === undefined
                       ? null
                       : renderSlot(
                         'settings.models.provider-card',

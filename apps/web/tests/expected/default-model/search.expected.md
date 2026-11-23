@@ -5,3 +5,5 @@
     - group "Acme Gateway":
       - text: Acme Gateway
       - menuitemradio "Acme Large"
+  - menu "会话选项":
+    - menuitem "智能体团队协作 关闭"

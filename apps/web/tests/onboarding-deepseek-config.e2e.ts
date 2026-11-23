@@ -1,7 +1,8 @@
 // Keyless browser e2e: the shipped DeepSeek adapter stays mounted while its
-// credential is absent, both ordered steps share the shipped modal chrome,
-// and the inline key write lands in an isolated harness home without a reload
-// or model call.
+// credential is absent, so no provider can serve requests. The CialloAPI
+// first-run step opens on its own and closes on "稍后配置"; the DeepSeek key
+// added from the Models page lands write-only in an isolated harness home
+// without a reload or model call, after which the step no longer opens.
 import { randomBytes } from 'node:crypto'
 import { assertModelInputLayout } from './model-input-layout.ts'
 import { readFile } from 'node:fs/promises'
@@ -12,22 +13,19 @@ import { chromium } from 'playwright'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import {
-  acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, compareOrRefreshGolden,
+  acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, CIALLO_START_COPY, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
-  WELCOME_NOTICE_ACK_FIELD, WELCOME_NOTICE_COPY, WELCOME_NOTICE_SETTINGS_NAMESPACE,
-  WELCOME_NOTICE_VERSION,
 } from './scaffold.ts'
 import { openSettings, ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/onboarding-deepseek-config', import.meta.url))
-const WELCOME_EXPECTED = join(SNAPSHOT_DIR, 'welcome.expected.md')
-const SIGN_IN_EXPECTED = join(SNAPSHOT_DIR, 'sign-in.expected.md')
+const START_EXPECTED = join(SNAPSHOT_DIR, 'start.expected.md')
 const MISSING_EXPECTED = join(SNAPSHOT_DIR, 'missing.expected.md')
 const MODELS_EXPECTED = join(SNAPSHOT_DIR, 'models.expected.md')
 const DEFAULT_MODELS_EXPECTED = join(SNAPSHOT_DIR, 'default-models.expected.md')
 const MODE = webSnapshotMode()
 
-describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup', () => {
+describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek credential configuration', () => {
   let scaffold: WebScaffold
   let browser: Browser
   let page: Page
@@ -36,7 +34,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
   const secret = `dsh_onboarding_${randomBytes(12).toString('hex')}_test`
 
   beforeAll(async () => {
-    scaffold = await launchWebScaffold({ deepSeekMissingCredential: true, welcomeNoticePending: true })
+    scaffold = await launchWebScaffold({ deepSeekMissingCredential: true })
     browser = await chromium.launch()
     // The scenario asserts the shipped Chinese copy, so the browser asks for it.
     page = await browser.newPage({ viewport: { width: 1440, height: 960 }, locale: ZH_BROWSER_LOCALE })
@@ -51,46 +49,48 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
     await scaffold?.close()
   })
 
-  it('stores a key write-only and observes configured state without restarting', async () => {
+  it('offers the CialloAPI step until a provider is usable and stores a DeepSeek key write-only', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-onboarding-deepseek-config'))
-    const welcome = page.getByRole('dialog', { name: WELCOME_NOTICE_COPY.zh.title })
-    await welcome.waitFor({ timeout: 15_000 })
+    const start = page.getByRole('dialog', { name: CIALLO_START_COPY.zh.title, exact: true })
+    await start.waitFor({ timeout: 15_000 })
     expect(await page.locator('#root').evaluate(root => (root as HTMLElement).inert)).toBe(true)
-    for (const paragraph of WELCOME_NOTICE_COPY.zh.body.split('\n\n')) {
-      expect(await welcome.getByText(paragraph, { exact: true }).count()).toBe(1)
-    }
-    expect(await welcome.getByRole('button').allTextContents()).toEqual([
-      WELCOME_NOTICE_COPY.zh.continueLabel,
-    ])
-    const welcomeAria = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
-    await compareOrRefreshGolden(WELCOME_EXPECTED, welcomeAria, MODE)
+    expect(await start.getByText(CIALLO_START_COPY.zh.description, { exact: true }).count()).toBe(1)
+    expect(await start.getByRole('button').allTextContents()).toEqual(expect.arrayContaining([
+      CIALLO_START_COPY.zh.later, CIALLO_START_COPY.zh.submit,
+    ]))
+    expect(await start.getByRole('button', { name: CIALLO_START_COPY.zh.submit, exact: true }).isDisabled()).toBe(true)
+    await compareOrRefreshGolden(START_EXPECTED,
+      await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), MODE)
 
-    // Observation is not acknowledgement: the exact version is persisted
-    // only by the explicit action, so a reload still presents this dialog.
+    // Deferring is not configuration: nothing persists, so a reload offers the step again.
+    await start.getByRole('button', { name: CIALLO_START_COPY.zh.later, exact: true }).click()
+    await start.waitFor({ state: 'detached', timeout: 15_000 })
+    expect(await page.locator('#root').evaluate(root => (root as HTMLElement).inert)).toBe(false)
     const firstReloadWarnings = tripwire.warnings.length
     await page.reload({ waitUntil: 'load' })
     acknowledgeReloadConnectionLoss(tripwire, firstReloadWarnings)
-    await welcome.waitFor({ timeout: 15_000 })
+    await start.waitFor({ timeout: 15_000 })
+    await start.getByRole('button', { name: CIALLO_START_COPY.zh.later, exact: true }).click()
+    await start.waitFor({ state: 'detached', timeout: 15_000 })
 
-    await welcome.getByRole('button', { name: WELCOME_NOTICE_COPY.zh.continueLabel }).click()
-    await welcome.waitFor({ state: 'detached', timeout: 15_000 })
-
-    const signIn = page.getByRole('dialog', { name: '开始使用', exact: true })
-    await signIn.waitFor({ timeout: 15_000 })
-    await compareOrRefreshGolden(SIGN_IN_EXPECTED,
-      await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), MODE)
-    await signIn.getByRole('button', { name: '添加 API Key', exact: true }).click()
-    const credentialStep = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
-    await credentialStep.waitFor({ timeout: 15_000 })
-    const keyInput = credentialStep.getByLabel('API 密钥', { exact: true })
+    // DeepSeek API without its key is offered by the add card rather than listed.
+    await openSettings(page, 'zh')
+    const settings = page.getByRole('dialog', { name: '设置' })
+    await settings.waitFor({ timeout: 10_000 })
+    await settings.getByRole('button', { name: '模型', exact: true }).click()
+    const addProvider = settings.getByRole('button', { name: '添加模型提供商', exact: true })
+    await addProvider.waitFor({ timeout: 10_000 })
+    expect(await settings.getByRole('button', { name: '编辑 DeepSeek API (deepseek-official)', exact: true }).count()).toBe(0)
+    await addProvider.click()
+    await settings.getByLabel('提供商', { exact: true }).selectOption('deepseek-official')
+    const keyInput = settings.getByLabel('API 密钥', { exact: true })
     await keyInput.waitFor({ timeout: 10_000 })
-    const initial = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
-    await compareOrRefreshGolden(MISSING_EXPECTED, initial, MODE)
+    await compareOrRefreshGolden(MISSING_EXPECTED,
+      await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd), MODE)
 
     await keyInput.fill(secret)
-    await credentialStep.getByRole('button', { name: '保存并继续' }).click()
-    await credentialStep.waitFor({ state: 'detached', timeout: 15_000 })
-    expect(await page.locator('#root').evaluate(root => (root as HTMLElement).inert)).toBe(false)
+    await settings.getByRole('button', { name: '保存', exact: true }).click()
+    await settings.getByText('已保存 DeepSeek API (deepseek-official)。', { exact: true }).waitFor({ timeout: 15_000 })
 
     const stored = await readFile(join(scaffold.harnessHome, '.credentials.yaml'), 'utf8')
     expect(stored.includes(`DEEPSEEK_API_KEY: ${secret}`)).toBe(true)
@@ -98,15 +98,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
     expect((await page.locator('body').ariaSnapshot()).includes(secret)).toBe(false)
     expect(browserConsole.some(line => line.includes(secret))).toBe(false)
 
-    const acknowledgedSettings = await readFile(join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8')
-    expect(acknowledgedSettings).toContain(`${WELCOME_NOTICE_ACK_FIELD}: ${WELCOME_NOTICE_VERSION}`)
-
-    // The ordinary Models surface reuses the refreshed join and exposes the
-    // configured write-only placeholder without a reload.
-    await openSettings(page, 'zh')
-    const settings = page.getByRole('dialog', { name: '设置' })
-    await settings.waitFor({ timeout: 10_000 })
-    await settings.getByRole('button', { name: '模型', exact: true }).click()
+    // The configured provider is now an ordinary row exposing the write-only placeholder without a reload.
     const deepSeekRow = settings.getByText('DeepSeek API', { exact: true }).first()
     await deepSeekRow.waitFor({ timeout: 10_000 })
     await deepSeekRow.locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
@@ -117,25 +109,18 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
       { timeout: 10_000 },
     ).toBe(`dsh_onboa${'•'.repeat(31)}test`)
 
+    // A usable provider exists, so the first-run step stays closed after a reload.
     const secondReloadWarnings = tripwire.warnings.length
     await page.reload({ waitUntil: 'load' })
     acknowledgeReloadConnectionLoss(tripwire, secondReloadWarnings)
     await page.waitForSelector('[class*="frame"]', { timeout: 15_000 })
-    expect(await page.getByRole('dialog', { name: WELCOME_NOTICE_COPY.zh.title }).count()).toBe(0)
+    await openSettings(page, 'zh')
+    await settings.getByRole('button', { name: '模型', exact: true }).click()
+    await settings.getByText('DeepSeek API', { exact: true }).first().waitFor({ timeout: 10_000 })
+    expect(await page.getByRole('dialog', { name: CIALLO_START_COPY.zh.title }).count()).toBe(0)
     expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
-
-    // An old acknowledgement means materially revised copy: welcome returns,
-    // while the already-configured provider step remains complete.
-    await scaffold.ctx.settings.mutate(WELCOME_NOTICE_SETTINGS_NAMESPACE, [{
-      op: 'set', path: [WELCOME_NOTICE_ACK_FIELD], value: 'previous-copy-version',
-    }])
-    const thirdReloadWarnings = tripwire.warnings.length
-    await page.reload({ waitUntil: 'load' })
-    acknowledgeReloadConnectionLoss(tripwire, thirdReloadWarnings)
-    await welcome.waitFor({ timeout: 15_000 })
-    await welcome.getByRole('button', { name: WELCOME_NOTICE_COPY.zh.continueLabel }).click()
-    await welcome.waitFor({ state: 'detached', timeout: 15_000 })
-    expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
+    await page.keyboard.press('Escape')
+    await settings.waitFor({ state: 'hidden' })
 
     expect((await page.content()).includes(secret)).toBe(false)
     expect((await page.locator('body').ariaSnapshot()).includes(secret)).toBe(false)
@@ -146,8 +131,8 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
 
   it('never paints the takeover chrome on a configured reload, even with the settings join held open', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-onboarding-configured-reload'))
-    // Regression pin for the reload flash: both steps are satisfied, yet each
-    // must load private facts before deciding not to show. Dialog chrome lives
+    // Regression pin for the reload flash: a provider is usable, yet the
+    // first-run step must load private facts before deciding not to show. Dialog chrome lives
     // inside each visible branch, so the deciding window paints and blocks
     // nothing. Holding settings/describe widens that window from loopback
     // RTT scale to a deterministic hundreds of milliseconds, removing all
@@ -162,7 +147,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
       ;(window as unknown as { __takeoverSightings: string[] }).__takeoverSightings = sightings
       setInterval(() => {
         if (document.querySelector(
-          '[role="dialog"][aria-label="预览版说明"], '
+          '[role="dialog"][aria-label="开始使用 Ciallo"], '
           + '[role="dialog"][aria-label="开始使用"], '
           + '[role="dialog"][aria-label="添加一个 API Key 开始使用"]',
         ) !== null) {
@@ -195,7 +180,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
     acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
     expect(await page.evaluate(() =>
       (window as unknown as { __takeoverSightings: string[] }).__takeoverSightings)).toEqual([])
-    expect(await page.getByRole('dialog', { name: WELCOME_NOTICE_COPY.zh.title }).count()).toBe(0)
+    expect(await page.getByRole('dialog', { name: CIALLO_START_COPY.zh.title }).count()).toBe(0)
     expect(await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).count()).toBe(0)
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
@@ -315,7 +300,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run DeepSeek credential setup
   it('keeps the fixture inventory closed', async () => {
     await assertFixtureInventory(
       SNAPSHOT_DIR,
-      ['welcome.expected.md', 'sign-in.expected.md', 'missing.expected.md', 'models.expected.md', 'default-models.expected.md', 'empty.expected.md'],
+      ['start.expected.md', 'missing.expected.md', 'models.expected.md', 'default-models.expected.md', 'empty.expected.md'],
     )
   })
 })

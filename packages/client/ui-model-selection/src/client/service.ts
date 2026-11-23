@@ -35,7 +35,7 @@ interface LiveState {
 
 /** The `ctx.modelDirectories` session model-selection service. */
 export class ModelDirectoryResolver extends Service {
-  static inject = ['sessions', 'remote', 'remote.session']
+  static inject = ['sessions', 'remote', 'remote.session', 'remote.llm']
 
   private readonly live: LiveState = { directories: new WeakMapWithValues() }
   private readonly catalog: ModelCatalogDirectory
@@ -75,6 +75,7 @@ export class ModelDirectoryResolver extends Service {
     if (existing !== undefined) return existing
     const directory = new ModelDirectory(
       this.ctx.remote.session,
+      this.ctx.remote.llm,
       sessionId,
       () => sessions.subagentAddress(sessionId) === undefined,
       this.catalog,

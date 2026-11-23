@@ -58,7 +58,10 @@ import type {} from '@deepseek-ai/dsh-settings'
 
 import type {} from '@deepseek-ai/cordis-plugin-loader'
 
+import { hostname } from 'node:os'
 import type { Context } from '@deepseek-ai/cordis'
+import { brandString } from '@deepseek-ai/dsh-brand'
+import type { SessionId } from '@deepseek-ai/dsh-session'
 import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
 import { normalizeApiKey } from '@deepseek-ai/dsh-credentials'
 import type { ApiKeyRejection } from '@deepseek-ai/dsh-credentials'
@@ -117,6 +120,29 @@ declare module '@deepseek-ai/cordis' {
 }
 
 const NS = 'llm-pi-ai'
+
+/** Longest parent chain followed before treating the reached Session as the root. */
+const MAX_SESSION_DEPTH = 16
+
+/**
+ * Follow loaded Session headers to the root of a subagent tree. A Session that
+ * is not loaded, or a cycle, ends the walk at the last Session reached.
+ * @param ctx - plugin context; the Session store is optional.
+ * @param sessionId - Session making the request.
+ * @returns the root Session id.
+ */
+function rootSessionOf(ctx: Context, sessionId: string): string {
+  const sessions = ctx.get('sessions')
+  let current = sessionId
+  const seen = new Set([sessionId])
+  for (let depth = 0; depth < MAX_SESSION_DEPTH; depth++) {
+    const parent = sessions?.get(brandString<SessionId>(current))?.header.parentSession
+    if (parent === undefined || seen.has(parent)) break
+    seen.add(parent)
+    current = parent
+  }
+  return current
+}
 
 /**
  * The registry captures these per route; a change here must re-register.
@@ -269,6 +295,9 @@ export function apply(ctx: Context, config: Config): void {
     onThinkingOmitted: ({ provider, model, count }) => {
       ctx.logger.debug(`llm-pi-ai: omitted stale thinking from ${count} assistant message(s) for route "${provider}/${model}"`)
     },
+    rootSession: sessionId => rootSessionOf(ctx, sessionId),
+    sessionCacheRetention: sessionId => ctx.llm.sessionCacheRetention(sessionId),
+    affinityDeviceId: `dsh-${hostname()}`.toLowerCase(),
   })
   // Independent of the route set: signing in is what makes a route worth
   // adding, so the flows are offered before any profile names their provider.

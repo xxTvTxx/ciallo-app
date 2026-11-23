@@ -40,6 +40,9 @@
     },
     {
       "path": "../../util/error"
+    },
+    {
+      "path": "../../storage/storage-domain"
     }
   ]
 }

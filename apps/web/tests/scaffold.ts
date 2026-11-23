@@ -104,24 +104,19 @@ function appBoot(): AppBoot {
   return builtAppBoot
 }
 
-// Host-side web e2e cannot import a browser package: doing so would pull that
-// package's complete TS project into this graph. Mirrored from
-// packages/client/ui-settings-models/src/onboarding-copy.ts; drift makes the
-// default pre-acknowledgement stop suppressing the notice and fails loudly.
-// import {
-//   WELCOME_NOTICE_ACK_FIELD, WELCOME_NOTICE_SETTINGS_NAMESPACE,
-//   WELCOME_NOTICE_VERSION, WELCOME_NOTICE_COPY,
-// } from '@deepseek-ai/dsh-client-ui-settings-models'
-export const WELCOME_NOTICE_SETTINGS_NAMESPACE = 'ui-settings-general'
 /** The installed bundle carrying the scaffold's deployment defaults; the plugin manager lists it beside fixture bundles. */
 export const SCAFFOLD_DEFAULTS_BUNDLE = 'dsh-web-scaffold-defaults'
-export const WELCOME_NOTICE_ACK_FIELD = 'welcomeNoticeVersion'
-export const WELCOME_NOTICE_VERSION = '2026-09-28.1'
-export const WELCOME_NOTICE_COPY = {
+
+// Host-side web e2e cannot import a browser package: doing so would pull that
+// package's complete TS project into this graph. Mirrored from the zh
+// dictionary in packages/client/ui-settings-models/src/client/locales.ts.
+/** Chinese copy of the automatic first-run CialloAPI step. */
+export const CIALLO_START_COPY = {
   zh: {
-    title: '预览版说明',
-    body: 'DeepSeek Harness 目前的 0.2 版本仍处于预览阶段，还有许多地方需要持续改进和打磨，希望听取广大开发者和用户的反馈建议。现在，新的桌面端面向广泛用户，开发者相关的进阶功能可在配置中开启使用。预计 DeepSeek Harness 的产品功能以及插件 API 都会继续快速迭代、持续演化，并逐渐趋于稳定。\n\n我们期待与全球用户和开发者一起，在开源、可复用、可组合的基础设施之上，共同探索智能上限。欢迎大家用 DeepSeek Harness 将想法变成现实，与社区一起丰富插件生态。',
-    continueLabel: '继续',
+    title: '开始使用 Ciallo',
+    description: '粘贴 CialloAPI 的 API Key 即可开始，项目和文件保存在本地。',
+    later: '稍后配置',
+    submit: '开始使用',
   },
 } as const
 
@@ -395,8 +390,6 @@ export interface LaunchOptions {
    * keyless first-run configuration lane; the default disables the adapter.
    */
   deepSeekMissingCredential?: boolean
-  /** Leave the current welcome notice pending; ordinary scenarios pre-acknowledge it before browser boot. */
-  welcomeNoticePending?: boolean
   /** Leave first-use Workspace initialization eligible; ordinary scenarios start after the default was removed. */
   firstUse?: boolean
   /** Pin the legacy Messages search endpoint and credential reference. */
@@ -878,11 +871,6 @@ export async function launchWebScaffold(options: LaunchOptions = {}): Promise<We
     const startupLoginUrl = new URL(tokenEntries[0]!.url)
     if (options.developerTools !== undefined) {
       await ctx.settings.update('ui-settings', { enabled: options.developerTools })
-    }
-    if (options.welcomeNoticePending !== true) {
-      await ctx.settings.mutate(WELCOME_NOTICE_SETTINGS_NAMESPACE, [{
-        op: 'set', path: [WELCOME_NOTICE_ACK_FIELD], value: WELCOME_NOTICE_VERSION,
-      }])
     }
     if (options.firstUse !== true && ctx.workspaceRegistry.list().length === 0) {
       const initial = await ctx.workspaceRegistry.initializeDefault(async () => workspaceCwd)

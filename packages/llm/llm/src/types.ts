@@ -454,6 +454,19 @@ export type SystemPromptUpdate = 'in-history'
  */
 export type ToolUpdate = 'in-history' | 'addition-only'
 
+/**
+ * Prompt-cache lifetime a request asks a caching provider for. `short` is the
+ * provider default (five minutes on Anthropic); `long` is the extended
+ * lifetime (one hour on Anthropic), whose cache writes cost more.
+ */
+export type LlmCacheRetention = 'short' | 'long'
+
+/** A model that honors a per-Session prompt-cache lifetime choice. */
+export interface LlmCacheRetentionInfo {
+  /** Lifetime its requests use while the Session has made no choice. */
+  default: LlmCacheRetention
+}
+
 /** Exact-route model metadata resolved by its owning adapter. */
 export interface LlmResolvedModelInfo extends LlmModelInfo {
   /** Provider-owned context capacity when known. */
@@ -466,6 +479,8 @@ export interface LlmResolvedModelInfo extends LlmModelInfo {
   systemPromptUpdate?: SystemPromptUpdate
   /** Declared mid-conversation tool declaration handling; absent means every request declares the complete tool list. */
   toolUpdate?: ToolUpdate
+  /** Per-Session prompt-cache lifetime choice, when the route honors one. */
+  cacheRetention?: LlmCacheRetentionInfo
 }
 
 /**

@@ -46,15 +46,14 @@ it.each(['light', 'dark'] as const)('renders a 16px permission trigger and 14px 
   expect(verticalCoverage / 2).toBeCloseTo(1, 2)
   expect(horizontalCoverage / 2).toBeCloseTo(1, 2)
 
-  await page.keyboard.press('Escape')
-  await page.getByRole('button', { name: 'Account menu', exact: true }).click()
-  const accountMenu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Settings', exact: true }) })
-  const accountIcons = accountMenu.getByRole('menuitem').locator('svg')
-  await expect.poll(() => accountIcons.count()).toBe(3)
-  for (const accountIcon of await accountIcons.all()) {
-    const accountBox = await accountIcon.boundingBox()
-    expect(accountBox && [accountBox.width, accountBox.height]).toEqual([14, 14])
+  const permissionMenu = page.getByRole('menu').filter({ has: page.getByRole('menuitem', { name: 'Workspace Write', exact: true }) })
+  const leadingIcons = permissionMenu.getByRole('menuitem').locator('svg:first-of-type')
+  expect(await leadingIcons.count()).toBeGreaterThan(1)
+  for (const leadingIcon of await leadingIcons.all()) {
+    const leadingBox = await leadingIcon.boundingBox()
+    expect(leadingBox && [leadingBox.width, leadingBox.height]).toEqual([14, 14])
   }
+  await page.keyboard.press('Escape')
 })
 
 it('renders product icons from the sprite and swaps in a theme plugin replacement', async () => {

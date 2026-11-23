@@ -3,4 +3,11 @@
     - group "DeepSeek API":
       - text: DeepSeek API
       - menuitemradio "Messages Flash" [checked]
+      - group "推理等级":
+        - text: 推理等级
+        - menuitemradio "Off"
+        - menuitemradio "High" [checked]
+        - menuitemradio "Max"
       - menuitemradio "DeepSeek-V4-Pro"
+  - menu "会话选项":
+    - menuitem "智能体团队协作 关闭"

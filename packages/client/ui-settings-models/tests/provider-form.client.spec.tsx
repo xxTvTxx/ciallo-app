@@ -1007,50 +1007,6 @@ describe('hand-declared providers', () => {
     expect(initialize).not.toHaveBeenCalled()
   })
 
-  it('configures CialloAPI from the third-party picker and saves the selected model', async () => {
-    const reasoningEfforts = { low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' }
-    const discover = vi.fn(() => Promise.resolve(ok([
-      { id: 'claude-sonnet-5-5', reasoningEfforts }, { id: 'other-model' },
-    ])))
-    const { mutate, set } = await mountSection({ discover })
-    fireEvent.click(screen.getByRole('button', { name: en.add }))
-    const form = within(screen.getByRole('tabpanel', { name: en.addCatalog }))
-    fireEvent.change(form.getByLabelText(en.provider), { target: { value: 'cialloapi' } })
-    expect(form.queryByLabelText(en.customRoute)).toBeNull()
-    expect(form.getByLabelText<HTMLSelectElement>(en.customApi).value).toBe('openai-responses')
-    expect(form.getByLabelText<HTMLInputElement>(en.baseUrl).value).toBe('https://cialloapi.com/v1')
-    fireEvent.change(form.getByLabelText(en.baseUrl), { target: { value: 'https://gateway.example/team/v1/responses' } })
-    expect(form.getByRole<HTMLButtonElement>('button', { name: en.fetchModels }).disabled).toBe(true)
-    fireEvent.change(form.getByLabelText(en.keyInput), { target: { value: 'fixture-key' } })
-    fireEvent.click(form.getByRole('button', { name: en.fetchModels }))
-
-    const models = within(await screen.findByRole('dialog', { name: en.fetchTitle }))
-    expect(lastProbe(discover)).toEqual({
-      settingsNs: 'llm-pi-ai', provider: 'cialloapi', baseURL: 'https://gateway.example/team/v1',
-      api: 'openai-responses', apiKey: 'fixture-key',
-    })
-    fireEvent.click(models.getByRole('checkbox', { name: 'other-model' }))
-    fireEvent.click(models.getByRole('button', { name: en.fetchAdopt }))
-    expect(form.getByLabelText(`${en.contextWindow} 1`)).toBeTruthy()
-    const defaultEffort = form.getByLabelText<HTMLSelectElement>(`${en.modelReasoningDefault} 1`)
-    expect(defaultEffort.disabled).toBe(false)
-    fireEvent.change(defaultEffort, { target: { value: 'medium' } })
-    expect(mutate).not.toHaveBeenCalled()
-    expect(set).not.toHaveBeenCalled()
-
-    fireEvent.click(form.getByRole('button', { name: en.create }))
-    await waitFor(() => { expect(set).toHaveBeenCalledWith('CIALLOAPI_API_KEY', 'fixture-key') })
-    expect(firstMutate(mutate).ops).toEqual([{
-      op: 'set',
-      path: ['providers', 'cialloapi'],
-      value: {
-        displayName: 'CialloAPI', baseURL: 'https://gateway.example/team/v1',
-        api: 'openai-responses', apiKeyEnv: 'CIALLOAPI_API_KEY',
-        models: [{ id: 'claude-sonnet-5-5', reasoningEfforts, defaultReasoningEffort: 'medium' }],
-      },
-    }])
-  })
-
   it('writes the whole profile and the key under the derived reference', async () => {
     const { mutate, set, onClose } = mountCard()
 

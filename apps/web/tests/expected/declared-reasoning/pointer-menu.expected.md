@@ -8,5 +8,13 @@
     - group "Acme Gateway":
       - text: Acme Gateway
       - menuitemradio "Acme Think"
+      - group "推理等级":
+        - text: 推理等级
+        - menuitemradio "Default" [checked]
+        - menuitemradio "Off"
+        - menuitemradio "High"
+        - menuitemradio "Max"
       - menuitemradio "Acme Swift" [checked]
       - menuitemradio "Acme Lite"
+  - menu "会话选项":
+    - menuitem "智能体团队协作 关闭"

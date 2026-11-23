@@ -1,6 +1,6 @@
 // A trusted remote browser uses the same Host settings service as loopback:
-// welcome acknowledgement, model configuration and appearance persist in the
-// Host profile patch across reloads and independent browser contexts.
+// model configuration and appearance persist in the Host profile patch across
+// reloads and independent browser contexts.
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { Browser, Locator, Page } from 'playwright'
@@ -8,7 +8,7 @@ import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import {
   acknowledgeReloadConnectionLoss,
-  launchWebScaffold, watchConsole, webSnapshotMode, WELCOME_NOTICE_COPY,
+  CIALLO_START_COPY, launchWebScaffold, watchConsole, webSnapshotMode,
   type WebScaffold,
 } from './scaffold.ts'
 import { openSettings, ZH_BROWSER_LOCALE } from './support.ts'
@@ -16,8 +16,8 @@ import { openSettings, ZH_BROWSER_LOCALE } from './support.ts'
 const MODE = webSnapshotMode()
 
 /**
- * A loading welcome store hides the notice, so absence is conclusive only
- * after the shared settings read has enabled the Models view.
+ * A loading Models join hides the first-run step, so absence is conclusive
+ * only after the shared settings read has enabled the Models view.
  * @param page - the loaded page.
  * @returns the open settings dialog on its Models view.
  */
@@ -28,7 +28,7 @@ async function expectOnboardingSettled(page: Page): Promise<Locator> {
   const dialog = page.getByRole('dialog', { name: '设置' })
   await dialog.getByRole('button', { name: '模型', exact: true }).click()
   await dialog.getByRole('button', { name: '添加模型提供商', exact: true }).waitFor({ timeout: 15_000 })
-  expect(await page.getByRole('dialog', { name: WELCOME_NOTICE_COPY.zh.title }).count()).toBe(0)
+  expect(await page.getByRole('dialog', { name: CIALLO_START_COPY.zh.title }).count()).toBe(0)
   return dialog
 }
 
@@ -41,7 +41,6 @@ describe.skipIf(MODE === 'record')('web e2e: trusted remote host preferences', (
   beforeAll(async () => {
     scaffold = await launchWebScaffold({
       remoteAuthority: 'remote.localhost',
-      welcomeNoticePending: true,
     })
     browser = await chromium.launch()
     page = await browser.newPage({
@@ -65,24 +64,10 @@ describe.skipIf(MODE === 'record')('web e2e: trusted remote host preferences', (
     acknowledgeReloadConnectionLoss(tripwire, warnings)
   }
 
-  it('persists welcome acknowledgement, model configuration, and appearance across reloads and browser contexts', async () => {
-    const welcome = page.getByRole('dialog', { name: WELCOME_NOTICE_COPY.zh.title })
-    await welcome.waitFor({ timeout: 15_000 })
-    expect(await page.locator('#root').evaluate(root => (root as HTMLElement).inert)).toBe(true)
-
-    await welcome.getByRole('button', { name: WELCOME_NOTICE_COPY.zh.continueLabel }).click()
-    await welcome.waitFor({ state: 'detached', timeout: 15_000 })
-    await expect.poll(
-      () => page.locator('#root').evaluate(root => (root as HTMLElement).inert),
-      { timeout: 15_000 },
-    ).toBe(false)
-    const settingsPath = join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml')
-    await expect.poll(() => readFile(settingsPath, 'utf8'), { timeout: 10_000 })
-      .toContain('welcomeNoticeVersion:')
-
-    // The acknowledged version is durable, so the notice stays away after a reload.
-    await reloadPage()
+  it('persists model configuration and appearance across reloads and browser contexts', async () => {
+    // A usable provider already exists, so the first-run step never takes over the page.
     const dialog = await expectOnboardingSettled(page)
+    const settingsPath = join(scaffold.harnessHome, 'profiles', 'scaffold', 'cordis.patch.yml')
 
     await page.emulateMedia({ colorScheme: 'light' })
     await dialog.getByRole('button', { name: '添加模型提供商', exact: true }).click()

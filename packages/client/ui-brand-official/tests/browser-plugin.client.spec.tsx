@@ -5,6 +5,7 @@ import { cleanup, render } from '@testing-library/react'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { apply, inject } from '../src/client/index.ts'
 import { OfficialBrandMark, OfficialBrandName } from '../src/client/Brand.tsx'
+import { PlaceholderMark } from '../src/client/PlaceholderMark.tsx'
 import { apply as hostApply } from '../src/index.ts'
 
 afterEach(() => {
@@ -46,13 +47,26 @@ describe('official browser-brand plugin', () => {
     expect(inject).toEqual(['slots'])
   })
 
-  it('keeps local sidebar branding and provides the same blank-home feedback', async () => {
+  it('gives other profiles the placeholder marks, the local name, and the same blank-home feedback', async () => {
     vi.stubEnv('DSH_CLIENT_BUILD_PROFILE', 'local')
     const subject = await bench()
-    await subject.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(0)
+    const fiber = subject.ctx.plugin({ inject: [...inject], apply })
+    await fiber.await()
+    expect(subject.slots.entries('sidebar.brand.mark').map(entry => entry.component)).toEqual([PlaceholderMark])
+    expect(subject.slots.entries(HERO_HOLE).map(entry => entry.component)).toEqual([PlaceholderMark])
     expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(0)
     expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(1)
+    await fiber.dispose()
+    expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(0)
+    expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)
+  })
+
+  it('renders the placeholder mark at the requested size with the host class', () => {
+    const mark = render(<PlaceholderMark size={34} className="hero-mark" />)
+    const svg = mark.container.querySelector('svg')
+    expect(svg?.getAttribute('width')).toBe('34')
+    expect(svg?.getAttribute('class')).toBe('hero-mark')
+    expect(svg?.getAttribute('aria-hidden')).toBe('true')
   })
 
   it('fills declarations before or after apply and removes every occupant on teardown', async () => {

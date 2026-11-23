@@ -27,6 +27,9 @@ export const remoteDefaultResponses: RemoteTable = {
       groups: [],
       failures: [],
     }),
+    // ui-settings-models first-run CialloAPI check: no usable provider and no configurable route.
+    'llm/listProviders': ok([]),
+    'llm/listConfigurableProviders': ok([]),
     // ui-agent-preset hero chip and header label on first mount.
     'agentPresets/list': ok({ presets: [] }),
     // cordis-client-runner `ClientCordisInspectRegistry.sync` at apply and on `connection/reset`.

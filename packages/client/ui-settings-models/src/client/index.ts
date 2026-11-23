@@ -1,8 +1,9 @@
 /**
  * Models settings and product-onboarding plugin, browser half. It registers
- * the Models page plus the ordered preview-notice and official-DeepSeek
- * onboarding dialogs, whose UI shares this package's modal wrapper. The Host
- * settings and credential contracts stay behind their existing wire APIs.
+ * the Models page plus the ordered CialloAPI first-run step and the
+ * official-DeepSeek credential step, whose UI shares this package's modal
+ * wrapper. The Host settings and credential contracts stay behind their
+ * existing wire APIs.
  * Export discipline:
  * packages/client/AGENTS.md.
  */
@@ -22,14 +23,12 @@ import { ModelsSection } from './ModelsSection.tsx'
 import type { ModelsSectionInjected } from './ModelsSection.tsx'
 import { DeepSeekOnboardingDialog } from './DeepSeekOnboardingDialog.tsx'
 import type { DeepSeekOnboardingInjected } from './DeepSeekOnboardingDialog.tsx'
-import { WelcomeNotice } from './WelcomeNotice.tsx'
-import type { WelcomeNoticeInjected } from './WelcomeNotice.tsx'
-import { WelcomeNoticeStore } from './welcome-store.ts'
+import { CialloStartDialog } from './CialloStartDialog.tsx'
+import type { CialloStartInjected } from './CialloStartDialog.tsx'
 import { ModelsSettingsStore } from './store.ts'
 import { createModelsOperations } from './operations.ts'
 import { createSettingsSchemaOperations } from './schema-operations.ts'
 import { en, ja, es, fr, de, ru, pt, zh, type ModelsKey } from './locales.ts'
-import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '../onboarding-copy.ts'
 import type { ModelsConfig } from '../types.ts'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
@@ -48,6 +47,9 @@ const NS = 'settings.models'
 
 /** Credential-onboarding choice while the Host sends none; the Host schema default. */
 const ABSENT_CREDENTIAL_ONBOARDING = true
+
+/** The official-DeepSeek step opens only on request; the CialloAPI step owns first-run setup. */
+const NEVER_AUTOMATIC: ObservableSnapshot<boolean> = { getSnapshot: () => false, subscribe: () => () => {} }
 
 export type {
   ModelsSettingsState, ProviderDirectoryEntry, ProviderRow,
@@ -79,11 +81,11 @@ export const inject = [
  * the ledger, wire its store to the connection, and keep it fresh on every
  * pushed invalidation (settings, credentials, or provider topology).
  * @param ctx - client root context.
- * @param config - Host-synced credential-onboarding choice, followed live until the official-DeepSeek step mounts.
+ * @param config - Host-synced credential-onboarding choice, followed live until the CialloAPI step mounts.
  */
 export function apply(ctx: ClientContext, config: SyncedConfig<ModelsConfig>): void {
   const nativeShell = 'dshDesktop' in globalThis
-  // Whether the official-DeepSeek step opens on its own; the native shell owns its own onboarding.
+  // Whether the CialloAPI step opens on its own; the native shell owns its own onboarding.
   const automatic: ObservableSnapshot<boolean> = {
     getSnapshot: () => !nativeShell && (config.credentialOnboarding.get() ?? ABSENT_CREDENTIAL_ONBOARDING),
     subscribe: listener => config.credentialOnboarding.subscribe(listener),
@@ -108,23 +110,23 @@ export function apply(ctx: ClientContext, config: SyncedConfig<ModelsConfig>): v
   const deepSeekOnboardingInjected = (): DeepSeekOnboardingInjected => ({
     track: (name, attributes) => ctx.get('productAnalytics')?.track(name, attributes),
     controller,
-    hooks: { models: controller.store, automatic },
+    hooks: { models: controller.store, automatic: NEVER_AUTOMATIC },
     operations,
     schema,
     t,
   })
-  const welcomeController = new WelcomeNoticeStore(ctx.configForms.get<Record<string, unknown>>(WELCOME_NOTICE_SETTINGS_NAMESPACE))
-  const welcomeInjected = (): WelcomeNoticeInjected => ({
-    controller: welcomeController,
-    hooks: { welcome: welcomeController.store },
+  const cialloStartInjected = (): CialloStartInjected => ({
+    controller,
+    hooks: { models: controller.store, automatic },
+    operations,
+    schema,
     t,
   })
 
   // Pushed invalidations converge every open surface without polling. The
   // configForms injection makes ui-settings activate first, and remote
   // dispatch preserves listener order; its listener therefore starts the
-  // mirror refresh before this store joins that refresh. The welcome notice
-  // follows its settings scope, so it needs no subscription here.
+  // mirror refresh before this store joins that refresh.
   ctx.effect(() => {
     const refreshModels = (): void => { refreshIfLoaded(controller) }
     const disposers = [
@@ -135,7 +137,6 @@ export function apply(ctx: ClientContext, config: SyncedConfig<ModelsConfig>): v
       ctx.on('connection/reset', refreshModels),
     ]
     return () => {
-      welcomeController.dispose()
       for (const dispose of disposers) dispose()
     }
   }, 'ui-settings-models: pushed invalidations')
@@ -151,12 +152,12 @@ export function apply(ctx: ClientContext, config: SyncedConfig<ModelsConfig>): v
       'settings.models.footer': { kind: 'list', scope: 'root' },
     },
   }, ModelsSection))
-  if (!nativeShell) ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
+  ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
     name: 'settings.onboarding',
-    id: 'welcome-notice',
+    id: 'ciallo-start',
     order: -100,
-    inject: welcomeInjected,
-  }, WelcomeNotice))
+    inject: cialloStartInjected,
+  }, CialloStartDialog))
   ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
     name: 'settings.onboarding',
     id: 'deepseek-official',

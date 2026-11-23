@@ -1,4 +1,5 @@
-- menu "模型与推理等级":
+- group "推理等级":
+  - text: 推理等级
   - menuitemradio "Default" [checked]
   - menuitemradio "Off"
   - menuitemradio "High"

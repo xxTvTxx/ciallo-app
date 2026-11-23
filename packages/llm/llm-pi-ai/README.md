@@ -85,6 +85,7 @@ Each profile may set a `retryPolicy`; omission uses normal mode with five retrie
 | `models` | installed catalog | Replaces the route's catalog wholesale; each entry defaults from the installed model |
 | `modelOverrides` | none | Reshapes individual installed-catalog models without replacing the rest |
 | `compat` | catalog detection | Wire-compatibility switches for unrecognized endpoints |
+| `sessionAffinity` | on for CialloAPI Anthropic routes | Send the root Session id as Anthropic `metadata.user_id` |
 | `defaultContextWindow` | `1,000,000` | Capacity fallback for undescribed models |
 | `defaultMaxTokens` | `128,000` | Output-cap fallback for undescribed models |
 | `requestImagePixelBudget` | `4,194,304` | Total-pixel budget for each deterministic request image |
@@ -118,7 +119,9 @@ Exact-model metadata lists `reasoning.efforts` from least to greatest selectable
 
 For self-hosted Chat Completions endpoints, `thinkingTokenBudgetField` selects the reasoning-budget parameter, and `vllmPriority` sets an integer scheduler priority when the server enables priority scheduling. Template arguments accept `$var: thinking.budget`. `openai-responses` gateways can set `supportsMaxOutputTokens: false` to omit `max_output_tokens`; Azure and Codex transports ignore this shared compatibility field. These controls are opt-in; catalog-owned Anthropic effort and fallback capabilities are not configurable switches.
 
-The `cialloapi` route at `https://cialloapi.com` on `anthropic-messages` or `openai-responses` has built-in metadata. Claude Opus 5.5, Sonnet 5.5, and Haiku 5.5 offer `low` through `max` when the entry declares no `reasoningEfforts`, and `anthropic-messages` sends them as adaptive thinking. Model discovery takes the model list from `GET /v1/models`, then requests the gateway's Codex manifest at `/v1/models?client_version=0.158.0` with the same key and merges its context window, reasoning levels, and default level by model id. A failed or slow manifest request (4 s) leaves the plain listing unchanged.
+CialloAPI group routes are named `cialloapi` and `cialloapi-<n>` (n ≥ 2); the Models page stores one route per gateway API key, because each key belongs to one gateway group. On `https://cialloapi.com` with `anthropic-messages` or `openai-responses`, Claude Opus 5.5, Sonnet 5.5, and Haiku 5.5 offer `low` through `max` when the entry declares no `reasoningEfforts`, and `anthropic-messages` sends them as adaptive thinking. Model discovery takes the model list from `GET /v1/models`, then requests the gateway's Codex manifest at `/v1/models?client_version=0.158.0` with the same key and merges its context window, reasoning levels, and default level by model id. A failed or slow manifest request (4 s) leaves the plain listing unchanged.
+
+`sessionAffinity` sends the root Session id as Anthropic `metadata.user_id` in Claude Code's JSON layout (`device_id` is `dsh-<hostname>`), so a gateway that selects upstream accounts by it keeps a session and its subagents on one account and their prompt cache valid. It applies to `anthropic-messages` models; unset, it is on for CialloAPI Anthropic routes and off elsewhere. The route's `cacheRetention` is the default prompt-cache lifetime: unset or `short` sends no `ttl` (five minutes), `long` sends `ttl: "1h"`. A Session's own choice through `ctx.llm.setSessionCacheRetention()` overrides it for that Session's Anthropic requests, a subagent without its own choice uses its root Session's, and the route then reports `cacheRetention` in its exact-model metadata; `none` turns caching and the choice off.
 
 ### Change configuration at runtime
 

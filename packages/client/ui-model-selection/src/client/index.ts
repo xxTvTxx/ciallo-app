@@ -31,7 +31,7 @@ import { en, ja, es, fr, de, ru, pt, zh, type ModelKey } from './locales.ts'
 import { orderModelProviders } from './provider-order.ts'
 
 export { ModelDirectory } from './directory.ts'
-export type { ModelDirectoryState } from './directory.ts'
+export type { CacheRetention, ModelDirectoryState } from './directory.ts'
 export { ModelDirectoryResolver } from './service.ts'
 export type { ModelLabelOwner, ModelSelectInjected } from './slots.ts'
 export type { ModelKey } from './locales.ts'
@@ -188,6 +188,9 @@ export function apply(ctx: ClientContext): void {
           resolveText: text => ctx.locale.resolveText(text),
           select: (selection: ModelSelection) => available
             ? directory.select(selection)
+            : Promise.resolve(undefined),
+          selectCacheRetention: retention => available
+            ? directory.setCacheRetention(retention)
             : Promise.resolve(undefined),
         }
       },

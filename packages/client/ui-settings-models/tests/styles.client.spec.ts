@@ -81,6 +81,13 @@ describe('ModelsSection theme styles', () => {
     expect(bare).toEqual([])
   })
 
+  it.each(['CialloApiCard.module.css', 'CialloStartDialog.module.css', 'OnboardingModal.module.css'])('names only declared theme variables in %s', (name) => {
+    const sheet = readFileSync(fileURLToPath(new URL(`../src/client/${name}`, import.meta.url)), 'utf8')
+    const named = [...sheet.matchAll(/var\((--(?:dsw|dsh|ds)-[a-z0-9-]+)/g)].map(match => match[1])
+    expect([...new Set(named)].filter(variable => !tokens.includes(`  ${String(variable)}:`))).toEqual([])
+    expect(sheet).not.toMatch(/#[0-9a-f]{3,8}\b|rgba?\(/i)
+  })
+
   it('never falls back to a literal colour', () => {
     // A token that resolves is never the problem; an undeclared one takes this
     // branch, and a literal here is a single colour for both themes.

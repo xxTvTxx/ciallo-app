@@ -65,12 +65,36 @@ export interface ModelsOperations {
    * @returns the candidates, or the refusal.
    */
   discoverModels(settingsNs: string, request: LlmModelDiscoveryRequest): Promise<ModelDiscoveryOutcome>
+  /**
+   * Ask whether the deployment default model is currently listed by a routable provider.
+   * @returns false only when the catalog answered and does not list the default; an unreadable catalog answers true.
+   */
+  defaultModelAvailable(): Promise<boolean>
+  /**
+   * Store the deployment default model in the default-model settings section.
+   * @param selection - route, model, and optional reasoning effort.
+   * @returns the refusal message, or undefined once stored.
+   */
+  saveDefaultModel(selection: DefaultModelSelection): Promise<string | undefined>
+}
+
+/** The default-model settings section the Host's default-model plugin reads. */
+export const DEFAULT_MODEL_NS = 'agent-default-model'
+
+/** A default model as the default-model section stores it. */
+export interface DefaultModelSelection {
+  /** Registered route id. */
+  readonly provider: string
+  /** Route-owned model id. */
+  readonly model: string
+  /** Model reasoning effort; absent follows the model's own default. */
+  readonly reasoningEffort?: string
 }
 
 /**
  * Bind the page's Host operations to the plugin's own Remote namespaces.
  * @param ctx - the page plugin's context, which declares `remote.credentials`,
- * `remote.llm`, and `remote.settings` in its own `inject`.
+ * `remote.llm`, `remote.session`, and `remote.settings` in its own `inject`.
  * @returns the callbacks the section and its cards are injected with.
  */
 export function createModelsOperations(ctx: ClientContext): ModelsOperations {
@@ -94,6 +118,22 @@ export function createModelsOperations(ctx: ClientContext): ModelsOperations {
       return response.ok
         ? { kind: 'found', models: response.value }
         : { kind: 'refused', message: response.error.message }
+    },
+    defaultModelAvailable: async () => {
+      const response = await ctx.remote.session.modelCatalog()
+      if (!response.ok) return true
+      const { default: selected, groups } = response.value
+      return groups.some(group => group.id === selected.provider && group.models.some(model => model.id === selected.model))
+    },
+    saveDefaultModel: async (selection) => {
+      const response = await ctx.remote.settings.mutate(DEFAULT_MODEL_NS, [
+        { op: 'set', path: ['provider'], value: selection.provider },
+        { op: 'set', path: ['model'], value: selection.model },
+        selection.reasoningEffort === undefined
+          ? { op: 'unset', path: ['reasoningEffort'] }
+          : { op: 'set', path: ['reasoningEffort'], value: selection.reasoningEffort },
+      ], undefined)
+      return response.ok ? undefined : response.error.message
     },
   }
 }

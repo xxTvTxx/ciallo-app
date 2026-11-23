@@ -143,11 +143,15 @@
 
     # Configuration-surface reads and writes over Typert Remote. Each method
     # reports an actionable error when its settings-domain provider is absent.
+    # This distribution has no DeepSeek account sign-in: without the account
+    # launcher, the sidebar foot shows the plain Settings button.
     - id: ui-settings-account
       name: '@deepseek-ai/dsh-client-ui-settings-account'
+      disabled: true
 
     - id: ui-account-notifications
       name: '@deepseek-ai/dsh-client-ui-account-notifications'
+      disabled: true
 
     - id: settings-controller
       name: '@deepseek-ai/dsh-api-settings-controller'

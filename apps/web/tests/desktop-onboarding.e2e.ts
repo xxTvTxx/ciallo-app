@@ -22,7 +22,8 @@ const NS = 'ui-settings-account'
 const INITIAL = { version: 1, step: 'welcome', purpose: null, process: null, completion: null, usage: 'compact', developerTools: false }
 const ACCOUNT_ASSET = /\/plugins\/@deepseek-ai\/dsh-client-ui-settings-account\/assets\/onboarding-[a-z-]+-[0-9a-f]{12}\.(?:svg|webp)$/
 
-describe.skipIf(MODE === 'record')('web e2e: App-only desktop onboarding', () => {
+// This distribution disables the DeepSeek account UI (ui-settings-account).
+describe.skip('web e2e: App-only desktop onboarding', () => {
   let root: string
   let server: Server
   let origin: string

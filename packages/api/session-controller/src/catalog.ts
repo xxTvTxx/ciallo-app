@@ -44,6 +44,7 @@ export async function buildModelCatalog(
           name: model.name,
           ...(model.description === undefined ? {} : { description: model.description }),
           ...(reasoning === undefined ? {} : { reasoning }),
+          ...(resolved.cacheRetention === undefined ? {} : { cacheRetention: { default: resolved.cacheRetention.default } }),
           ...(model.badge === undefined ? {} : { badge: model.badge }),
         }
       }))

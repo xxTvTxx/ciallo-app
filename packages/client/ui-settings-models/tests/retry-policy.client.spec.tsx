@@ -64,6 +64,8 @@ function setup(namespace: SettingsNamespaceView, settingsPath: string[] = []) {
   const operations: ModelsOperations = {
     storeCredential: vi.fn(() => Promise.resolve(undefined)),
     removeCredential: vi.fn(() => Promise.resolve(undefined)),
+    defaultModelAvailable: vi.fn(),
+    saveDefaultModel: vi.fn(),
     writeSettings,
     discoverModels: vi.fn<ModelsOperations['discoverModels']>(() => Promise.resolve({ kind: 'found', models: [] })),
   }

@@ -42,7 +42,7 @@ async function frames(page: Page): Promise<void> {
 function readGroups(viewport: Locator) {
   return viewport.locator('[data-menu-group]').evaluateAll(groups => groups.map(group => ({
     label: group.querySelector('[data-menu-group-heading]')!.textContent,
-    rows: [...group.querySelectorAll('[role="option"], [role="menuitemradio"]')].map(row => row.textContent),
+    rows: [...group.querySelectorAll('[role="option"], [data-model-row]')].map(row => row.textContent),
   })))
 }
 
@@ -161,7 +161,6 @@ describe.skipIf(webSnapshotMode() === 'record').each([
       const open = async (): Promise<void> => {
         if (entry === 'button') {
           await page.getByRole('button', { name: /^选择模型/ }).click()
-          await page.getByRole('menuitem', { name: /^模型/ }).click()
         } else {
           await page.getByRole('button', { name: '添加文件或调用指令', exact: true }).click()
           await page.getByRole('option', { name: /^模型/ }).click()
@@ -176,14 +175,13 @@ describe.skipIf(webSnapshotMode() === 'record').each([
       const close = async (): Promise<void> => {
         if (crashed || page.isClosed() || await surface.count() === 0) return
         await search.press('Escape')
-        if (entry === 'button') await page.keyboard.press('Escape')
         await surface.waitFor({ state: 'detached' })
         await composer.fill('')
       }
 
       await open()
       try {
-        expect(await viewport.locator('[role="option"], [role="menuitemradio"]').count()).toBe(30)
+        expect(await viewport.locator('[role="option"], [data-model-row]').count()).toBe(30)
         expect(await viewport.evaluate(node => node.scrollTop)).toBe(0)
         expect(await viewport.locator('[data-menu-group-heading]').evaluateAll(headings =>
           [...new Set(headings.map(heading => getComputedStyle(heading).backgroundColor))]))
@@ -222,10 +220,15 @@ describe.skipIf(webSnapshotMode() === 'record').each([
           const visited = new Set<number>()
           let observedPinnedHighlight = false
           for (let step = 0; step < steps; step++) {
-            const rows = viewport.locator('[role="option"], [role="menuitemradio"]')
+            const rows = viewport.locator('[role="option"], [data-model-row]')
             const before = await rows.evaluateAll(nodes => nodes.findIndex(node =>
               node.hasAttribute('data-highlighted') || node.getAttribute('aria-selected') === 'true'))
             await search.press(key)
+            // The button menu's expanded model shows effort chips below its row; steps across
+            // them take real focus until the next model returns focus to search.
+            for (let chip = 0; chip < 12 && !await search.evaluate(node => node === node.ownerDocument.activeElement); chip++) {
+              await page.keyboard.press(key)
+            }
             const expected = (before + (key === 'ArrowDown' ? 1 : -1) + 30) % 30
             await expect.poll(() => rows.evaluateAll(nodes => nodes.findIndex(node =>
               node.hasAttribute('data-highlighted') || node.getAttribute('aria-selected') === 'true'))).toBe(expected)
@@ -295,7 +298,6 @@ describe.skipIf(webSnapshotMode() === 'record').each([
     try {
       await page.setViewportSize({ width: 402, height: 874 })
       await page.getByRole('button', { name: /^选择模型/ }).click()
-      await page.getByRole('menuitem', { name: /^模型/ }).click()
       const panel = page.getByRole('group', { name: '模型与推理等级', exact: true })
       for (const height of [874, 500]) {
         await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
@@ -323,7 +325,7 @@ describe.skipIf(webSnapshotMode() === 'record').each([
         expect(await names.evaluateAll(labels => labels.some(label =>
           label.scrollWidth > label.clientWidth))).toBe(true)
         expect(await models.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
-        const widths = await models.locator('[role="menuitemradio"]').evaluateAll(rows => rows.map(row => ({
+        const widths = await models.locator('[data-model-row]').evaluateAll(rows => rows.map(row => ({
           right: row.lastElementChild!.getBoundingClientRect().right,
           width: row.getBoundingClientRect().width,
         })))
@@ -342,7 +344,6 @@ describe.skipIf(webSnapshotMode() === 'record').each([
       await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
       await cdp.detach()
       await page.keyboard.press('Escape')
-      await page.keyboard.press('Escape')
       await page.setViewportSize({ width: 1680, height: 1000 })
     }
   })
@@ -354,7 +355,7 @@ describe.skipIf(webSnapshotMode() === 'record').each([
       await page.setViewportSize({ width: 1440, height: 1000 })
       const trigger = page.getByRole('button', { name: /^选择模型/ })
       await trigger.click()
-      const menu = page.getByRole('menu', { name: '模型与推理等级', exact: true })
+      const menu = page.locator('[data-model-menu]')
       await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1.5 })
       await expect.poll(() => page.evaluate(() => window.visualViewport!.scale)).toBe(1.5)
       await frames(page)
@@ -369,8 +370,9 @@ describe.skipIf(webSnapshotMode() === 'record').each([
         const bottom = Math.min(window.innerHeight - viewport.height, anchor.top - 8 - rect.height - 12)
         const dx = (left + right) / 2 - viewport.offsetLeft
         const dy = (top + bottom) / 2 - viewport.offsetTop
+        // Scroll from the empty upper-left page area so the gesture pans the page, not the menu list.
         return { left, right, top, bottom, dx, dy,
-          x: viewport.width / 2, y: viewport.height / 2 }
+          x: viewport.width / 2, y: Math.min(viewport.height / 2, Math.max(20, (rect.top - viewport.offsetTop) / 2)) }
       })
       expect(target.right).toBeGreaterThan(target.left)
       expect(target.bottom).toBeGreaterThan(target.top)
@@ -398,33 +400,34 @@ describe.skipIf(webSnapshotMode() === 'record').each([
     }
   })
 
-  it.runIf(engine === chromium)('keeps reasoning efforts selectable after zooming with and without list overflow', async () => {
+  it.runIf(engine === chromium)('keeps the expanded model’s effort chips selectable after zooming at two heights', async () => {
     const cdp = await page.context().newCDPSession(page)
     try {
-      for (const { height, scrolls } of [{ height: 500, scrolls: false }, { height: 350, scrolls: true }]) {
+      for (const height of [500, 350]) {
         await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
         await page.setViewportSize({ width: 402, height })
-        await page.getByRole('button', { name: /^选择模型/ }).click()
-        await page.getByRole('menuitem', { name: /^推理等级/ }).click()
-        const menu = page.getByRole('menu', { name: '模型与推理等级', exact: true })
-        await menu.getByRole('menuitemradio').first().click()
+        const trigger = page.getByRole('button', { name: /^选择模型/ })
+        const menu = page.locator('[data-model-menu]')
+        const chips = page.locator('[data-model-chip="effort"]')
+        await trigger.click()
+        await chips.first().click()
         await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection().reasoningEffort).toBeUndefined()
-        await page.getByRole('button', { name: /^选择模型/ }).click()
-        await page.getByRole('menuitem', { name: /^推理等级/ }).click()
-        const last = menu.getByRole('menuitemradio').last()
+        await menu.waitFor({ state: 'detached' })
+        await trigger.click()
+        const last = chips.last()
         await expect.poll(() => last.getAttribute('aria-checked')).toBe('false')
         await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 2.5 })
         await expect.poll(() => page.evaluate(() => window.visualViewport!.scale)).toBe(2.5)
-        expect(await menu.getByRole('menuitemradio').count()).toBeGreaterThanOrEqual(7)
-        await expect.poll(() => last.evaluate((row) => {
-          const scroller = row.parentElement!
-          scroller.scrollTop = scroller.scrollHeight
-          return { overflow: getComputedStyle(scroller).overflowY,
-            overflows: scroller.scrollHeight > scroller.clientHeight, moved: scroller.scrollTop > 0 }
-        })).toEqual({ overflow: 'auto', overflows: scrolls, moved: scrolls })
-        await expect.poll(() => last.evaluate((row) => {
-          const rect = row.getBoundingClientRect()
-          const viewport = row.parentElement!.getBoundingClientRect()
+        expect(await chips.count()).toBeGreaterThanOrEqual(7)
+        // The chips scroll with the model list; bring the last one inside the list viewport.
+        await expect.poll(() => last.evaluate((chip) => {
+          const scroller = chip.closest<HTMLElement>('[role="menu"]')!
+          scroller.scrollTop += chip.getBoundingClientRect().bottom - scroller.getBoundingClientRect().bottom + 4
+          return { overflow: getComputedStyle(scroller).overflowY, overflows: scroller.scrollHeight > scroller.clientHeight }
+        })).toEqual({ overflow: 'auto', overflows: true })
+        await expect.poll(() => last.evaluate((chip) => {
+          const rect = chip.getBoundingClientRect()
+          const viewport = chip.closest('[role="menu"]')!.getBoundingClientRect()
           return rect.top >= viewport.top - 1 && rect.bottom <= viewport.bottom + 1
         })).toBe(true)
         const target = await last.evaluate((row) => {
@@ -463,7 +466,6 @@ describe.skipIf(webSnapshotMode() === 'record').each([
     } finally {
       await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 })
       await cdp.detach()
-      await page.keyboard.press('Escape')
       await page.keyboard.press('Escape')
       await page.setViewportSize({ width: 1680, height: 1000 })
     }

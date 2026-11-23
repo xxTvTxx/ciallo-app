@@ -92,6 +92,7 @@ const configure = (maxTokens: number): ConfigureCall =>
 - **通过配置暴露并激活提供方**——适配器声明可配置提供方路由与 settings namespace，配置界面因此可以激活休眠提供方并编辑连接信息，无需重启。`LlmConfigurableProvider.error` 报告供修复的配置诊断；未受影响的模型仍可提供服务。条目还可携带 `defaultBaseURL`，即配置未设置端点时适配器使用的端点；以及 `nativeAuth`，即配置未指定凭据引用时适配器认证读取的环境变量与 OAuth 登录；`baseURLEnv` 列出配置端点所用的环境变量。配置界面直接从目录读取这些字段，无需调用适配器。
 - **发现与解析模型**——列出适配器公布的模型、询问端点它提供哪些模型（候选携带可选的 `inputModalities`；缺省表示未知），并解析某个精确模型的上下文窗口、输出默认值、推理（reasoning）强度、输入模态与系统提示词更新模式：当模型把任意位置最新的 `system` 消息读作有效系统提示词时，`LlmResolvedModelInfo.systemPromptUpdate` 为 `'in-history'`；只读取开头 system 消息时该字段缺失；`normalizeModelInfo` 以 `INVALID_MODEL_INFO` 拒绝任何其他值。
 - **校验调用配置**——显式或配置的推理强度会在任何提供方 I/O 之前对照精确模型校验；请求省略输出上限时，会填入适配器配置的输出上限。
+- **选择 Session 的提示缓存时长**——`setSessionCacheRetention(sessionId, 'short' | 'long' | null)` 记录一个 Session 的选择，`sessionCacheRetention(sessionId)` 读取它；二者都是供配置界面使用的 Remote 方法，`ctx.llm.sessionCacheRetention()` 是适配器每次请求使用的同步读取。该选择是请求元数据而非模型可见内容，因此存放在 `llm_session_cache_retention` 存储域而不是 Session 日志里；挂载存储域时它在重启后仍保留，否则只在本进程内有效。适配器支持该选择的模型会在 `LlmResolvedModelInfo.cacheRetention` 中报告默认时长；`normalizeModelInfo` 以 `INVALID_MODEL_INFO` 拒绝 `short` 与 `long` 以外的默认值。
 - **不展开即读取内嵌 Assistant 流**——`assistantStreamFirstTokenTime`（首 token）、`assistantStreamHasVisibleContent`（任一可见内容）与 `assistantStreamHasVisibleText`（任一可见文本）通过可提前退出的扫描直接从紧凑记录得出结果；`lastAssistantStreamChunk` 反向扫描到某一类型的最后一个原始 chunk，`assistantStreamChunks` 与 `joinAssistantStreamText` 扫描整个流，`assembleAssistantStream` 向 `BlockAssembler` 每个 run 喂一段拼接 delta，blocks／usage／replayState 与逐成员展开相同。`runFirstTokenTime` 与 `runFirstVisibleTime` 对单个打包 run 做提前退出扫描，`isTokenDelta`、`isVisibleChunk` 与 `chunkHasVisibleText` 定义单个 chunk 的 token 与可见性规则。`expandAssistantStream` 仍是持久边界读取记录的校验路径；它不被记忆化，因为保留的展开在事件生命周期内约花费紧凑流的十倍内存。
 
 ### 失败与恢复
@@ -126,6 +127,7 @@ const configure = (maxTokens: number): ConfigureCall =>
 | [`src/error.ts`](src/error.ts) | `HarnessError`/`LlmError` 分类体系与提供方无关失败 code |
 | [`src/content.ts`](src/content.ts) | 生成文件和图片的句柄文本，并转换请求历史 |
 | [`src/adapter-failure.ts`](src/adapter-failure.ts) | 把失败归一化为终止 finish 分片 |
+| [`src/session-cache-retention.ts`](src/session-cache-retention.ts) | 基于可选存储域的 Session 级提示缓存时长选择 |
 
 ### 主流程
 

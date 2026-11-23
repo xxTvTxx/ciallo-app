@@ -1171,8 +1171,10 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     hookContext: '',
     slotInject: '',
     declaredBy: 'factory \'conversation.content\' (client-ui-conversation), so it exists while that definition is registered',
-    occupants: [],
-    replaceRisk: 'none',
+    occupants: [
+      'client-ui-brand-official PlaceholderMark',
+    ],
+    replaceRisk: 'shadows-shipped-ui',
     example: 'return {\n  inject: [\'slots\'],\n  apply(ctx) {\n    ctx.slots.inject(\'conversation.hero.brand.mark\', () => ctx.slots.register(\n      { name: \'conversation.hero.brand.mark\' },\n      () => React.createElement(\'div\', null, \'hello\'),\n    ))\n  },\n}',
     source: 'packages/client/ui-conversation/src/client/contract/slots.ts:296',
   },
@@ -1630,7 +1632,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     doc: 'Non-interactive inline model label; selection controls remain owner-managed.\nWithout a contribution, the badge precedes the catalog name in the trigger\nand follows it in menus.',
     registerOptions: [],
     ownerProps: [
-      '/** Catalog data for a model name inside the composer\'s existing controls. */\nexport interface ModelLabelOwner {\n  /** Provider identity and localized display name; contains no connection configuration. */\n  provider: Pick<ModelProviderGroup, \'id\' | \'name\'>\n  /** The exact provider\'s model catalog entry. */\n  model: ModelCatalogModel\n  /** Trigger caption, root-menu current value, or selectable model row. */\n  placement: \'trigger\' | \'menu\' | \'option\'\n  /** Whether this provider/model pair is the current selection. */\n  selected: boolean\n}',
+      '/** Catalog data for a model name inside the composer\'s existing controls. */\nexport interface ModelLabelOwner {\n  /** Provider identity and localized display name; contains no connection configuration. */\n  provider: Pick<ModelProviderGroup, \'id\' | \'name\'>\n  /** The exact provider\'s model catalog entry. */\n  model: ModelCatalogModel\n  /** Trigger caption or selectable model row. */\n  placement: \'trigger\' | \'option\'\n  /** Whether this provider/model pair is the current selection. */\n  selected: boolean\n}',
     ],
     ownerPropsReferences: [
       'ModelCatalogModel',
@@ -1670,8 +1672,8 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     key: 'conversation.input.model.options',
     kind: 'list',
     scope: 'session',
-    summary: 'Session options appended after model and reasoning controls in the root menu.',
-    doc: 'Session options appended after model and reasoning controls in the root menu.\nRender each interactive entry as a `button` with role `menuitem`, `menuitemradio`, or `switch`:\nArrow keys and Tab reach only those rows.',
+    summary: 'Session options listed below the model list, after a divider.',
+    doc: 'Session options listed below the model list, after a divider.\nRender each interactive entry as a `button` with role `menuitem`, `menuitemradio`, or `switch`:\nArrow keys and Tab reach only those rows.',
     registerOptions: [
       {
         name: 'id',
@@ -1694,9 +1696,10 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     ],
     ownerProps: [
       '/** Selection state and feedback shared by menu option entries and detail panes. */\nexport interface ModelMenuControls {\n  /** Whether the composer refuses changes, including while a model selection is saving. */\n  locked: boolean\n  /** Close the menu and focus its trigger synchronously before opening another overlay. */\n  dismiss: () => void\n  /** Report a failed selection through the menu owner\'s persistent toast. */\n  reportFailure: (message: string) => void\n}',
-      '/** Root-menu controls for opening plugin-owned settings panes. */\nexport type ModelMenuOptions = ModelMenuControls & {\n  /**\n   * Open pane.key in conversation.input.model.pane with pane.title as its localized accessible name.\n   * The root button\'s data-model-menu-pane must match pane.key for focus return.\n   */\n  openPane: (pane: ModelMenuPaneRef) => void\n}',
+      '/** Model-menu option controls for opening plugin-owned settings panes. */\nexport type ModelMenuOptions = ModelMenuControls & {\n  /**\n   * Open pane.key in conversation.input.model.pane with pane.title as its localized accessible name.\n   * The option button\'s data-model-menu-pane must match pane.key for focus return.\n   */\n  openPane: (pane: ModelMenuPaneRef) => void\n}',
     ],
     ownerPropsReferences: [
+      'Model',
       'ModelMenuPaneRef',
     ],
     standardProps: [
@@ -1736,7 +1739,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     kind: 'keyed',
     scope: 'session',
     summary: 'Plugin-owned content displayed as a model-menu detail pane.',
-    doc: 'Plugin-owned content displayed as a model-menu detail pane.\nThe pane places its own initial focus, for example with `autoFocus`; without one,\nfocus stays on the menu surface, where Escape and Shift+Tab still return to the root menu.',
+    doc: 'Plugin-owned content displayed as a model-menu detail pane.\nThe pane places its own initial focus, for example with `autoFocus`; without one,\nfocus stays on the menu surface, where Escape and Shift+Tab still return to the model list.',
     registerOptions: [
       {
         name: 'key',
@@ -4464,7 +4467,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar.settings\' (client-ui-settings-general), so it exists while that entry is mounted',
     occupants: [
-      'client-ui-settings-models WelcomeNotice id \'welcome-notice\'',
+      'client-ui-settings-models CialloStartDialog id \'ciallo-start\'',
       'client-ui-settings-models DeepSeekOnboardingDialog id \'deepseek-official\'',
     ],
     replaceRisk: 'none',
@@ -4942,6 +4945,7 @@ export const CLIENT_SLOT_API: readonly ClientSlotEntry[] = [
     slotInject: '',
     declaredBy: 'an entry in \'sidebar\' (client-ui-sidebar), so it exists while that entry is mounted',
     occupants: [
+      'client-ui-brand-official PlaceholderMark',
       'client-ui-brand-official OfficialBrandMark',
       'experimental-liveshare ViewerBrandMark',
     ],

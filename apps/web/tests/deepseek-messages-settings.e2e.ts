@@ -4,18 +4,46 @@ import { once } from 'node:events'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { chromium, webkit, type Browser, type Page } from 'playwright'
+import { chromium, webkit, type Browser, type Locator, type Page } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
 import { BlockAssembler, createUserMessage, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
 import { createLaunchEnvironmentSnapshot } from '@deepseek-ai/dsh-launch-environment'
 import {
-  captureStableAria, compareOrRefreshGolden, launchWebScaffold,
+  captureStableAria, CIALLO_START_COPY, compareOrRefreshGolden, launchWebScaffold,
   watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
 import { openSettings, connectFreshWorkspaceZh, saveFailureShot, ZH_BROWSER_LOCALE } from './support.ts'
 
 const EXPECTED = fileURLToPath(new URL('./expected/deepseek-messages-settings/', import.meta.url))
+
+/**
+ * Defer the automatic CialloAPI step that a keyless first run opens.
+ * @param page - page loaded with no usable provider.
+ */
+async function deferCialloStart(page: Page): Promise<void> {
+  const start = page.getByRole('dialog', { name: CIALLO_START_COPY.zh.title, exact: true })
+  await start.getByRole('button', { name: CIALLO_START_COPY.zh.later, exact: true }).click()
+  await start.waitFor({ state: 'detached' })
+}
+
+/**
+ * Add DeepSeek API from the Models page's add card; without its key the provider is offered there instead of listed.
+ * @param page - page whose Settings dialog is closed.
+ * @param key - API key to save.
+ * @returns the open Settings dialog on the Models view.
+ */
+async function addDeepSeekApi(page: Page, key: string): Promise<Locator> {
+  await openSettings(page, 'zh')
+  const dialog = page.getByRole('dialog', { name: '设置', exact: true })
+  await dialog.getByRole('button', { name: '模型', exact: true }).click()
+  await dialog.getByRole('button', { name: '添加模型提供商', exact: true }).click()
+  await dialog.getByLabel('提供商', { exact: true }).selectOption('deepseek-official')
+  await dialog.getByLabel('API 密钥', { exact: true }).fill(key)
+  await dialog.getByRole('button', { name: '保存', exact: true }).click()
+  await dialog.getByText('已保存 DeepSeek API (deepseek-official)。', { exact: true }).waitFor()
+  return dialog
+}
 
 it.skipIf(webSnapshotMode() === 'record').each(['deepseek-official', 'google', 'openai', 'acme-gateway'])(
   'clears the saved %s key and sends the next request with environment authentication', async (provider) => {
@@ -82,10 +110,8 @@ it.skipIf(webSnapshotMode() === 'record').each(['deepseek-official', 'google', '
       await dialog.getByRole('button', { name: '模型', exact: true }).click()
       const edit = dialog.getByRole('button', { name: `编辑 ${messages ? 'DeepSeek API (deepseek-official)' : provider}`, exact: true })
       await edit.click()
-      // This row's card alone. Between the credential delete and the profile
-      // write that restores native auth, google's row reports no usable
-      // provider and the page mounts the DeepSeek first-run setup card, whose
-      // key field would answer a dialog-wide count.
+      // This row's card alone: the CialloAPI card beside it has its own key
+      // field, which would answer a dialog-wide count.
       const key = edit.locator('xpath=ancestor::li').getByLabel('API 密钥', { exact: true })
       await key.press('Delete')
       expect(await key.getAttribute('placeholder')).toBe(`留空使用环境认证（${envRef}）`)
@@ -188,23 +214,20 @@ it.each([{ name: 'Chromium', engine: chromium }, { name: 'WebKit', engine: webki
       const page = await browser.newPage({ viewport: { width: 1680, height: 1000 }, locale: ZH_BROWSER_LOCALE })
       const tripwire = watchConsole(page)
       await page.goto(scaffold.authenticatedUrl, { waitUntil: 'load' })
-      await page.getByRole('dialog', { name: '开始使用', exact: true }).getByRole('button', { name: '添加 API Key', exact: true }).click()
-      await page.getByRole('dialog', { name: '添加一个 API Key 开始使用' }).getByRole('button', { name: '稍后配置' }).click()
-      await openSettings(page, 'zh')
-      const dialog = page.getByRole('dialog', { name: '设置', exact: true })
-      await dialog.getByRole('button', { name: '模型', exact: true }).click()
-      const setup = dialog.getByText('DeepSeek API', { exact: true }).locator('xpath=ancestor::li')
+      await deferCialloStart(page)
+      const dialog = await addDeepSeekApi(page, 'fixture-drag-key')
+      const edit = dialog.getByRole('button', { name: '编辑 DeepSeek API (deepseek-official)', exact: true })
+      await edit.click()
+      const setup = edit.locator('xpath=ancestor::li')
       await setup.getByText('自定义设置', { exact: true }).click()
-      await dialog.getByRole('button', { name: '添加模型提供商' }).click()
-      await dialog.getByRole('tab', { name: '自定义模型 API' }).click()
-      const custom = dialog.getByRole('tabpanel', { name: '自定义模型 API' })
-      await custom.getByRole('button', { name: '添加模型', exact: true }).click()
-      const target = custom.getByLabel('模型 ID 1', { exact: true })
-      await target.fill('foreign-model')
+      // The CialloAPI card owns its own editor, so its new-group draft stays open beside the row editor.
+      await dialog.getByRole('button', { name: '添加分组（粘贴另一个分组的 API Key）', exact: true }).click()
+      const target = dialog.getByRole('group', { name: '添加分组', exact: true }).getByLabel('分组名称', { exact: true })
+      await target.fill('foreign-group')
       const before = scaffold.ctx.settings.describe({ redactSecrets: true }).map(row => ({ ns: row.ns, value: row.value }))
       const source = setup.getByRole('button', { name: '调整模型顺序 1', exact: true })
       await source.dragTo(target)
-      expect(await target.inputValue()).toBe('foreign-model')
+      expect(await target.inputValue()).toBe('foreign-group')
       expect(await setup.getByLabel('模型 ID 1', { exact: true }).inputValue()).toBe('deepseek-flash')
       expect(scaffold.ctx.settings.describe({ redactSecrets: true }).map(row => ({ ns: row.ns, value: row.value }))).toEqual(before)
       expect(tripwire.pageErrors).toEqual([])
@@ -245,14 +268,8 @@ describe.skipIf(webSnapshotMode() === 'record')('web e2e: DeepSeek Messages sett
     expect(scaffold.ctx.llm.listProviders()).toContainEqual({ id: 'deepseek-official', name: 'DeepSeek API' })
     expect(scaffold.ctx.llm.listProviders().filter(provider => provider.id === 'deepseek-official')).toHaveLength(1)
     expect(scaffold.ctx.agentDefaultModel.currentSelection()).toEqual({ provider: 'deepseek-official', model: 'deepseek-flash' })
-    await page.getByRole('dialog', { name: '开始使用', exact: true }).getByRole('button', { name: '添加 API Key', exact: true }).click()
-    const onboarding = page.getByRole('dialog', { name: '添加一个 API Key 开始使用' })
-    await onboarding.getByLabel('API 密钥', { exact: true }).fill('sk-messages-onboarding')
-    await onboarding.getByRole('button', { name: '保存并继续' }).click()
-    await onboarding.waitFor({ state: 'detached' })
-    await openSettings(page, 'zh')
-    const dialog = page.getByRole('dialog', { name: '设置', exact: true })
-    await dialog.getByRole('button', { name: '模型', exact: true }).click()
+    await deferCialloStart(page)
+    const dialog = await addDeepSeekApi(page, 'sk-messages-onboarding')
     await dialog.getByText('DeepSeek API', { exact: true }).waitFor()
     expect(await dialog.getByText('DeepSeek API', { exact: true }).count()).toBe(1)
     await dialog.getByText('DeepSeek API', { exact: true }).locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
@@ -299,16 +316,19 @@ describe.skipIf(webSnapshotMode() === 'record')('web e2e: DeepSeek Messages sett
     await page.keyboard.press('Escape')
     await connectFreshWorkspaceZh(page, scaffold.workspaceCwd, 'messages-settings-e2e')
     await page.getByRole('button', { name: /^选择模型/ }).click()
-    await page.getByRole('menuitem', { name: /模型/ }).click()
     await page.getByRole('menuitemradio', { name: 'Messages Flash', exact: true }).waitFor()
     await compareOrRefreshGolden(join(EXPECTED, 'picker.expected.md'),
       await captureStableAria(page, '[role="group"][aria-label="模型与推理等级"]', scaffold.workspaceCwd), webSnapshotMode())
-    await page.keyboard.press('Escape')
-    await page.getByRole('menuitem', { name: /推理等级/ }).click()
-    const effortWeights = await page.getByRole('menuitemradio').evaluateAll(rows => rows.map(row =>
+    // Model names and effort chips use regular weight, including the selected ones.
+    const nameWeights = await page.locator('[data-model-row]').evaluateAll(rows => rows.map(row =>
       getComputedStyle(row.querySelector('span span')!).fontWeight,
     ))
-    expect(new Set(effortWeights)).toEqual(new Set(['400']))
+    const effortWeights = await page.locator('[data-model-chip="effort"]').evaluateAll(chips => chips.map(chip =>
+      getComputedStyle(chip).fontWeight,
+    ))
+    expect(effortWeights.length).toBeGreaterThan(0)
+    expect(new Set([...nameWeights, ...effortWeights])).toEqual(new Set(['400']))
+    await page.keyboard.press('Escape')
     expect(tripwire.pageErrors).toEqual([])
   }, 60_000)
 
@@ -327,7 +347,11 @@ describe.skipIf(webSnapshotMode() === 'record')('web e2e: DeepSeek Messages sett
     })
     await expect.poll(() => input.getAttribute('contenteditable')).toBe('true')
     await trigger.click()
-    await page.getByRole('menuitemradio', { name: 'Messages Flash', exact: true }).click()
+    const row = page.getByRole('menuitemradio', { name: 'Messages Flash', exact: true })
+    await row.click()
+    // A model with effort levels expands first; its preselected default effort saves it.
+    const settingsRow = row.locator('xpath=following-sibling::*[1][@data-model-settings]')
+    if (await settingsRow.count() > 0) await settingsRow.locator('[data-model-chip="effort"][aria-checked="true"]').click()
     await expect.poll(() => input.getAttribute('contenteditable')).toBe('true')
     await expect.poll(() => scaffold.ctx.agentDefaultModel.currentSelection()).toMatchObject({
       provider: 'deepseek-official', model: 'deepseek-flash',

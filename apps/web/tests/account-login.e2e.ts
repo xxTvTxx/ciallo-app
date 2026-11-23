@@ -100,7 +100,8 @@ async function mockPlatform() {
   }
 }
 
-describe.skipIf(MODE === 'record')('web e2e: DeepSeek account sign-in in a plain browser', () => {
+// This distribution disables the DeepSeek account UI (ui-settings-account).
+describe.skip('web e2e: DeepSeek account sign-in in a plain browser', () => {
   let root: string | undefined
   let scaffold: WebScaffold
   let browser: Browser

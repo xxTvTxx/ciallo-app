@@ -9,7 +9,12 @@
   - button "打开配置文件"
   - button "关闭"
   - heading "模型" [level=2]
-  - paragraph: 填入各提供商的 API 密钥即可使用其模型。
+  - paragraph: 填入 CialloAPI 的 API Key 即可使用。一个 Key 对应网关上的一个分组。
+  - region "CialloAPI":
+    - text: CialloAPI 默认 https://cialloapi.com
+    - button "修改地址"
+    - paragraph: 粘贴 CialloAPI 的 API Key 即可添加第一个分组。
+    - button "添加分组（粘贴另一个分组的 API Key）"
   - list:
     - listitem:
       - text: openrouter

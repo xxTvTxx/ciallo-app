@@ -160,21 +160,18 @@ describe('web e2e: agent teamwork panel', () => {
     const trigger = page.getByRole('button', { name: /^Select model/u })
     await trigger.click()
     const menu = page.locator('[data-model-menu]')
-    const summary = menu.getByRole('menuitem', { name: 'Agent teamwork Off', exact: true })
+    // Session options follow the model list, behind its divider.
+    const options = menu.getByRole('menu', { name: 'Session options', exact: true })
+    const summary = options.getByRole('menuitem', { name: 'Agent teamwork Off', exact: true })
     await summary.waitFor()
-    const stateColor = await summary.getByText('Off', { exact: true }).evaluate(element => getComputedStyle(element).color)
-    const modelColor = await menu.getByRole('menuitem', { name: 'Model DeepSeek-V4-Flash', exact: true })
-      .getByText('DeepSeek-V4-Flash', { exact: true }).evaluate(element => getComputedStyle(element).color)
-    expect(stateColor).toBe(modelColor)
-    const inspectArrow = (element: HTMLElement | SVGElement) => {
-      const { left, right, width, height } = element.getBoundingClientRect()
-      return { left, right, width, height, color: getComputedStyle(element).color, glyph: element.innerHTML }
-    }
-    const peerArrow = menu.getByRole('menuitem', { name: 'Model DeepSeek-V4-Flash', exact: true }).locator('svg').last()
-    expect(await summary.locator('svg').evaluate(inspectArrow)).toEqual(await peerArrow.evaluate(inspectArrow))
+    expect(await menu.getByRole('menu', { name: 'Model', exact: true }).evaluate((list, after) => {
+      const position = list.compareDocumentPosition(after!)
+      return (position & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+    }, await options.elementHandle())).toBe(true)
+    expect(await options.evaluate(element => getComputedStyle(element).borderTopStyle)).toBe('solid')
     expect(await menu.getByRole('switch').count()).toBe(0)
     expect(await page.getByRole('button', { name: 'About agent teamwork', exact: true }).count()).toBe(0)
-    const rootSnapshot = await captureStableAria(page, '[data-model-menu]', scaffold.workspaceCwd)
+    const rootSnapshot = await captureStableAria(page, '[data-model-menu] [role="menu"][aria-label="Session options"]', scaffold.workspaceCwd)
     const original = await menu.elementHandle()
     if (original === null) throw new Error('Model menu is missing')
     try {
@@ -196,7 +193,7 @@ describe('web e2e: agent teamwork panel', () => {
       }))).toEqual({ rowBackground: 'rgba(0, 0, 0, 0)', focusVisible: true, outline: 'solid', descriptionGap: 0 })
       const settingsSnapshot = await captureStableAria(page, '[data-model-menu]', scaffold.workspaceCwd)
       await compareOrRefreshGolden(join(SNAPSHOT_DIR, 'info.expected.md'),
-        `## Root\n\n${rootSnapshot}\n\n## Team settings\n\n${settingsSnapshot}`, MODE)
+        `## Options\n\n${rootSnapshot}\n\n## Team settings\n\n${settingsSnapshot}`, MODE)
       await page.keyboard.press('Escape')
       await expect.poll(() => summary.evaluate(element => element === document.activeElement)).toBe(true)
       expect(await menu.getByRole('switch').count()).toBe(0)
@@ -215,7 +212,7 @@ describe('web e2e: agent teamwork panel', () => {
     }
   })
 
-  it('aligns settings with the root menu and keeps explanatory text noninteractive in wide and narrow viewports', async () => {
+  it('anchors settings with the model list and keeps explanatory text noninteractive in wide and narrow viewports', async () => {
     onTestFailed(() => saveFailureShot(page, 'web-e2e-team-settings-page'))
     const viewport = page.viewportSize()!
     try {
@@ -231,17 +228,14 @@ describe('web e2e: agent teamwork panel', () => {
         await page.keyboard.press('Escape')
         const summary = menu.getByRole('menuitem', { name: 'Agent teamwork Off', exact: true })
         await summary.waitFor()
-        const rootBounds = await menu.evaluate((element) => {
-          const { width, left, right } = element.getBoundingClientRect()
-          return { width, left, right }
-        })
-        expect(rootBounds.width).toBe(240)
+        // The model list is content-sized; the detail pane is 240px wide on the same right edge.
+        const listRight = await menu.evaluate(element => element.getBoundingClientRect().right)
         await summary.click()
         await toggle.waitFor()
         await expect.poll(() => menu.evaluate((element) => {
-          const { width, left, right } = element.getBoundingClientRect()
-          return { width, left, right }
-        })).toEqual(rootBounds)
+          const { width, right } = element.getBoundingClientRect()
+          return { width, right }
+        })).toEqual({ width: 240, right: listRight })
         await expect.poll(() => menu.evaluate((element) => {
           const bounds = element.getBoundingClientRect()
           return bounds.left >= 12 && bounds.right <= innerWidth - 12
@@ -289,9 +283,13 @@ describe('web e2e: agent teamwork panel', () => {
     await toggle.waitFor()
     expect(await toggle.getAttribute('aria-checked')).toBe('false')
     await toggle.focus()
+    // Shift+Tab returns to the model list on the summary; Escape then closes.
     await page.keyboard.press('Shift+Tab')
-    expect(await page.getByRole('button', { name: /^Select model/u }).evaluate(element => element === document.activeElement)).toBe(true)
+    const summary = page.getByRole('menuitem', { name: 'Agent teamwork Off', exact: true })
+    await expect.poll(() => summary.evaluate(element => element === document.activeElement)).toBe(true)
     expect(await toggle.count()).toBe(0)
+    await page.keyboard.press('Escape')
+    await expect.poll(() => page.getByRole('button', { name: /^Select model/u }).evaluate(element => element === document.activeElement)).toBe(true)
     await openTeamSettings(page)
     expect(await toggle.evaluate(element => element === document.activeElement)).toBe(true)
     await page.keyboard.press('Space')
@@ -325,7 +323,7 @@ describe('web e2e: agent teamwork panel', () => {
       await closeModelMenu(page)
       await expect.poll(() => scaffold.ctx.agentTeams.isEnabled(agent)).toBe(enabled)
       await expect.poll(() => input.textContent()).toBe('')
-      await page.getByRole('button', { name: 'Account menu', exact: true }).focus()
+      await page.getByRole('button', { name: 'Settings', exact: true }).focus()
       await input.click()
       await page.keyboard.insertText('asdas')
       await expect.poll(() => input.textContent()).toBe('asdas')
@@ -638,7 +636,7 @@ describe('web e2e: agent teamwork panel', () => {
       expect(await trigger.evaluate(element => element === document.activeElement)).toBe(true)
       await page.keyboard.press('Enter')
       await panel.waitFor()
-      const outside = page.getByRole('button', { name: 'Account menu', exact: true })
+      const outside = page.getByRole('button', { name: 'Settings', exact: true })
       await outside.focus()
       expect(await panel.count()).toBe(1)
       await page.keyboard.press('Escape')

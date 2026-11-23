@@ -29,6 +29,7 @@ import type {
   Provider,
   ThinkingLevelMap,
 } from '@earendil-works/pi-ai'
+import { cialloReasoningEfforts } from './ciallo.ts'
 
 /**
  * Pricing for a model the installed catalog does not describe. The harness
@@ -829,25 +830,6 @@ function resolveModelCompat(
   return { compat: { ...inherited, ...configured } as ModelCompat }
 }
 
-// CialloAPI's Claude effort catalog supplies these levels on its Anthropic endpoint.
-const CIALLO_ADAPTIVE_MODELS = new Set(['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'])
-const CIALLO_ADAPTIVE_EFFORTS: PiAiReasoningEfforts = {
-  low: 'low',
-  medium: 'medium',
-  high: 'high',
-  xhigh: 'xhigh',
-  max: 'max',
-}
-
-/** Known Claude effort mappings on CialloAPI's Anthropic and Responses endpoints. */
-export function cialloReasoningEfforts(
-  provider: string | undefined, api: string, baseURL: string, model: string,
-): PiAiReasoningEfforts | undefined {
-  if (provider !== 'cialloapi' || (api !== 'anthropic-messages' && api !== 'openai-responses')
-    || !CIALLO_ADAPTIVE_MODELS.has(model) || URL.parse(baseURL)?.origin !== 'https://cialloapi.com') return undefined
-  return CIALLO_ADAPTIVE_EFFORTS
-}
-
 /** One route's materialized catalog, plus the request caps its profile chose. */
 export interface RouteCatalog {
   /** The materialized models in configuration order. */
@@ -869,7 +851,11 @@ export interface RouteCatalog {
   defaultReasoningEfforts: ReadonlyMap<string, ModelThinkingLevel>
 }
 
-/** Return the effort ids accepted by this model's reasoning metadata. */
+/**
+ * Resolve selectable reasoning levels from pi-ai's public model metadata.
+ * @param model - model descriptor carrying reasoning support and wire mappings.
+ * @returns supported levels in pi-ai's escalation order.
+ */
 export function getSupportedThinkingLevels(model: Model<Api>): ModelThinkingLevel[] {
   if (!model.reasoning) return ['off']
   return THINKING_LEVELS.filter((level) => {

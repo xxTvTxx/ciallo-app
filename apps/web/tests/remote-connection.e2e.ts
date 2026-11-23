@@ -245,7 +245,7 @@ describe('web e2e: one-use QR browser login', () => {
         title: { size: '14px', height: '21px', weight: '500' },
         description: { size: '14px', height: '21px', weight: '400' }, titleGap: 12, controlGap: 12,
       })
-      expect(await page.getByRole('button', { name: '账号菜单', exact: true }).count()).toBe(0)
+      expect(await page.getByRole('button', { name: '设置', exact: true }).count()).toBe(0)
       expect(await page.evaluate(async () => {
         const reply = await fetch('./', { method: 'HEAD', credentials: 'same-origin', cache: 'no-store', redirect: 'manual' })
         return { status: reply.status, body: await reply.text() }
@@ -318,7 +318,7 @@ describe('web e2e: one-use QR browser login', () => {
 
       await input.fill(secure.authenticatedUrl)
       await submit.click()
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(page.url()).toBe(secure.url)
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-auth-'))).toHaveLength(1)
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([])
@@ -327,7 +327,7 @@ describe('web e2e: one-use QR browser login', () => {
         return { status: reply.status, body: await reply.text() }
       })).toEqual({ status: 200, body: '' })
       await page.reload()
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(console.pageErrors).toEqual([])
     } finally {
       await phone.close()
@@ -506,7 +506,7 @@ describe('web e2e: one-use QR browser login', () => {
           const guest = await localBrowser.newPage({ locale: ZH_BROWSER_LOCALE })
           try {
             await guest.goto(copiedAddress)
-            await guest.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+            await guest.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
             expect(guest.url() === new URL(plainUrl).href).toBe(true)
             expect((await guest.context().cookies()).some(cookie => cookie.name.startsWith('dsh-auth-'))).toBe(true)
           } finally {
@@ -676,11 +676,11 @@ describe('web e2e: one-use QR browser login', () => {
 
       const phonePage = await phone.newPage()
       await phonePage.goto(copiedUrl)
-      await phonePage.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await phonePage.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(phonePage.url()).toBe(secure.url)
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-auth-'))).toHaveLength(1)
       await phonePage.reload()
-      await phonePage.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await phonePage.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
 
       await page.setViewportSize(MOBILE)
       await snapshot(page, secure, 'link-mobile-light')
@@ -938,7 +938,7 @@ describe('web e2e: one-use QR browser login', () => {
         && response.request().method() === 'POST')
       await phonePage.goto(qrUrl)
       expect((await exchanged).status()).toBe(204)
-      await phonePage.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await phonePage.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(phonePage.url()).toBe(secure.url)
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([
         expect.objectContaining({ httpOnly: true, secure: true, sameSite: 'Strict', domain: 'qr-login.test' }),
@@ -948,7 +948,7 @@ describe('web e2e: one-use QR browser login', () => {
         method: 'HEAD', credentials: 'same-origin', cache: 'no-store', redirect: 'manual',
       })).status)).toBe(200)
       await phonePage.reload()
-      await phonePage.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await phonePage.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       await desktopSection.getByText('二维码已使用，请在手机上确认是否已登录', { exact: true }).waitFor()
       expect(await desktopSection.getByRole('img').count()).toBe(0)
       await snapshot(desktopPage, secure, 'used')
@@ -957,7 +957,7 @@ describe('web e2e: one-use QR browser login', () => {
       await phonePage.close()
       const returning = await phone.newPage()
       await returning.goto(secure.url)
-      await returning.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await returning.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(returning.url()).toBe(secure.url)
       const mobileSection = await remoteSettings(returning)
       await mobileSection.getByRole('button', { name: '生成二维码', exact: true }).waitFor()
@@ -1007,7 +1007,7 @@ describe('web e2e: one-use QR browser login', () => {
       expect((await refused).status()).toBe(410)
       await expect.poll(() => new URL(reusedPage.url()).hash).toBe('')
       expect((await stranger.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([])
-      expect(await reusedPage.getByRole('button', { name: '账号菜单', exact: true }).count()).toBe(0)
+      expect(await reusedPage.getByRole('button', { name: '设置', exact: true }).count()).toBe(0)
       expect(pageErrors).toEqual([])
     } finally {
       await Promise.all([desktop.close(), phone.close(), stranger.close()])
@@ -1051,7 +1051,7 @@ describe('web e2e: one-use QR browser login', () => {
       }
       await input.fill(new URL(secure.authenticatedUrl).searchParams.get('token')!)
       await submit.click()
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(page.url()).toBe(secure.url)
       expect((await phone.cookies()).some(cookie => cookie.name.startsWith('dsh-auth-'))).toBe(true)
     } finally {
@@ -1083,7 +1083,7 @@ describe('web e2e: one-use QR browser login', () => {
       if (screenshots !== undefined) await page.screenshot({ path: join(screenshots, 'expired-qr-mobile-light.png') })
       await input.fill(new URL(expired.authenticatedUrl).searchParams.get('token')!)
       await submit.click()
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(page.url()).toBe(expired.url)
       expect((await applicant.cookies()).some(cookie => cookie.name.startsWith('dsh-auth-'))).toBe(true)
     } finally {
@@ -1101,14 +1101,14 @@ describe('web e2e: one-use QR browser login', () => {
       const qrUrl = await createCode(owner, settings)
       const page = await phone.newPage()
       await page.goto(secure.authenticatedUrl)
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect((await phone.cookies()).some(cookie => cookie.name.startsWith('dsh-auth-'))).toBe(true)
       expect((await phone.cookies()).some(cookie => cookie.name.startsWith('dsh-remote-'))).toBe(false)
       const exchanged = page.waitForResponse(response => new URL(response.url()).pathname === '/' && new URL(response.url()).search === '?login=qr'
         && response.request().method() === 'POST')
       await page.goto(qrUrl)
       expect((await exchanged).status()).toBe(204)
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(page.url()).toBe(secure.url)
       expect((await phone.cookies()).some(cookie => cookie.name.startsWith('dsh-remote-'))).toBe(true)
       await settings.getByText('二维码已使用，请在手机上确认是否已登录', { exact: true }).waitFor()
@@ -1259,7 +1259,7 @@ describe('web e2e: one-use QR browser login', () => {
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([])
       expect(await createCode(page, section)).not.toBe(qrUrl)
       await page.reload()
-      await page.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await page.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
     } finally {
       await Promise.all([desktop.close(), phone.close()])
     }
@@ -1452,7 +1452,7 @@ describe('web e2e: one-use QR browser login', () => {
         && response.request().method() === 'POST')
       await phonePage.goto(qrUrl)
       expect((await exchanged).status()).toBe(204)
-      await phonePage.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await phonePage.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(phonePage.url()).toBe(fixture.url)
       expect((await phone.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([
         expect.objectContaining({ httpOnly: true, secure: false, sameSite: 'Strict', domain: 'qr-login.test' }),
@@ -1466,7 +1466,7 @@ describe('web e2e: one-use QR browser login', () => {
       await phonePage.close()
       const returning = await phone.newPage()
       await returning.goto(fixture.url)
-      await returning.getByRole('button', { name: '账号菜单', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
+      await returning.getByRole('button', { name: '设置', exact: true, includeHidden: true }).waitFor({ state: 'attached' })
       expect(returning.url()).toBe(fixture.url)
 
       const reusedPage = await stranger.newPage()
@@ -1476,7 +1476,7 @@ describe('web e2e: one-use QR browser login', () => {
       expect((await refused).status()).toBe(410)
       await expect.poll(() => new URL(reusedPage.url()).hash).toBe('')
       expect((await stranger.cookies()).filter(cookie => cookie.name.startsWith('dsh-remote-'))).toEqual([])
-      expect(await reusedPage.getByRole('button', { name: '账号菜单', exact: true }).count()).toBe(0)
+      expect(await reusedPage.getByRole('button', { name: '设置', exact: true }).count()).toBe(0)
     } finally {
       try {
         await Promise.all([desktop.close(), phone.close(), stranger.close()])

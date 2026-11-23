@@ -44,6 +44,8 @@ interface BundleLayer {
  * @param bundles - bundle package names in application order.
  * @param anchor - file whose package resolution locates the bundles; default this package.
  * @param disabledContext - optional Loader evaluation scope for trusted `disabled` expressions.
+ * @param enabled - package names booted even where the composition disables their row, for specs of plugins a
+ *   distribution leaves out.
  * @returns the roster in composition order, one row per package.
  * @throws {Error} when a bundle, its patch file, or an enabled row's package does not resolve, when the patch list
  * is not a list or does not apply as written, or when a browser row has an unevaluated `disabled` expression.
@@ -52,6 +54,7 @@ export function bundleRoster(
   bundles: readonly string[],
   anchor: string = fileURLToPath(import.meta.url),
   disabledContext?: object,
+  enabled: readonly string[] = [],
 ): ClientRoster {
   const layers = bundles.map(name => readLayer(name, anchor))
   const entries = applyEntryPatches([], layers.flatMap(layer => layer.patches), (message: string, ...args: unknown[]) => {
@@ -62,7 +65,7 @@ export function bundleRoster(
   const seen = new Set<string>()
   for (const { entry, disabled } of flattenGroups(entries)) {
     const name = exactPackageSpecifier(entry.name)
-    if (name === undefined || disabled.includes(true) || seen.has(name)) continue
+    if (name === undefined || seen.has(name) || (disabled.includes(true) && !enabled.includes(name))) continue
     if (disabledContext !== undefined
       && disabled.some(value => isJsExpr(value) && Boolean(evaluate(disabledContext, value.__jsExpr)))) continue
     seen.add(name)
@@ -164,3 +167,8 @@ const webProfileServices: Readonly<Record<string, object | undefined>> = { profi
 export const webApp: ClientRoster = bundleRoster(WEB_PROFILE_BUNDLES, undefined, {
   get: (name: string) => webProfileServices[name],
 })
+
+/** The `web` roster plus the DeepSeek account rows this distribution disables, for the account plugins' own specs. */
+export const webAppWithAccount: ClientRoster = bundleRoster(WEB_PROFILE_BUNDLES, undefined, {
+  get: (name: string) => webProfileServices[name],
+}, ['@deepseek-ai/dsh-client-ui-settings-account', '@deepseek-ai/dsh-client-ui-account-notifications'])

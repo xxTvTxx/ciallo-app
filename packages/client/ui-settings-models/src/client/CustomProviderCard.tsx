@@ -38,7 +38,7 @@ import { deriveKeyRef } from './store.ts'
 import { protocolLabel } from './protocol-label.ts'
 import { protocolNeedsKey, protocolReasoningLevels } from './protocol-rules.ts'
 import type { ModelsOperations } from './operations.ts'
-import { CIALLO_API, cialloApiBaseURL } from './ciallo-api.ts'
+import { isCialloRoute } from './ciallo-groups.ts'
 import type { en, ModelsKey } from './locales.ts'
 import styles from './ModelsSection.module.css'
 
@@ -76,8 +76,6 @@ function isHttpUrl(value: string): boolean {
 
 /** Props of {@link CustomProviderCard}. */
 export interface CustomProviderCardProps {
-  /** Fill the provider identity and normalize gateway addresses for CialloAPI. */
-  cialloApi?: boolean
   /** Route ids already declared, so the card refuses to shadow one. */
   taken: readonly string[]
   /** Wire protocols the adapter can serve, in the order it reports them. */
@@ -114,11 +112,10 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   const { taken, protocols, reasoningLevels, operations, t, onBusyChange } = props
   // The write is checked against the revision on which this draft was opened.
   const [openedAt] = useState(() => props.revision)
-  const [route, setRoute] = useState<string>(props.cialloApi ? CIALLO_API.provider : '')
-  const [displayName, setDisplayName] = useState<string>(props.cialloApi ? CIALLO_API.displayName : '')
+  const [route, setRoute] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [baseURL, setBaseURL] = useState('')
   const [protocol, setProtocol] = useState(protocols[0] ?? '')
-  const [addressDraft, setBaseURL] = useState<string>()
-  const baseURL = addressDraft ?? (props.cialloApi ? cialloApiBaseURL(CIALLO_API.origin, protocol) ?? '' : '')
   const [keyDraft, setKeyDraft] = useState('')
   const [models, setModels] = useState<readonly ModelDraft[]>([])
   const [busy, setBusy] = useState(false)
@@ -136,8 +133,9 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   const profileDisabled = disabled || committed
 
   const routeInvalid = route.length > 0 && !ROUTE_PATTERN.test(route)
-  const routeTaken = !committed && taken.includes(route)
-  const normalizedBaseURL = props.cialloApi ? cialloApiBaseURL(baseURL, protocol) ?? '' : baseURL.trim()
+  // CialloAPI group ids belong to the CialloAPI card, which owns their profiles.
+  const routeTaken = taken.includes(route) || isCialloRoute(route)
+  const normalizedBaseURL = baseURL.trim()
   const baseUrlInvalid = baseURL.length > 0 && !isHttpUrl(normalizedBaseURL)
   // Rows are checked by the same per-row validator the editor cards use, so a
   // bad row is named by its position here too. Capacities have route-level
@@ -147,8 +145,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
   const modelFailure = validateDeepSeekModels(models)
     ?? validateReasoningEfforts(models, reasoning.levelsOnly ? reasoning.levels : undefined)
   // A blank key is a legal choice only where the protocol can authenticate without one.
-  const keyRequired = props.cialloApi === true || protocolNeedsKey(protocol)
-  const keyMissing = keyRequired && keyDraft.trim().length === 0
+  const keyMissing = protocolNeedsKey(protocol) && keyDraft.trim().length === 0
   const keyFailure = keyMissing ? 'keyRequired' as const : apiKeyFailure(keyDraft)
   // The typed key with paste whitespace removed. A blank field yields an empty
   // string, which the create path reads as "no key supplied" — a route may
@@ -234,40 +231,35 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
 
   return (
     <div className={styles['editor']}>
-      {props.cialloApi && routeTaken ? <p className={styles['error']}>{t('customRouteTaken')}</p> : null}
-      {props.cialloApi ? null : (
-        <>
-          <div className={styles['field']}>
-            <span className={styles['fieldLabel']}>{t('customRoute')}</span>
-            <input
-              className={styles['input']}
-              type="text"
-              value={route}
-              placeholder="acme-gateway"
-              aria-label={t('customRoute')}
-              disabled={profileDisabled}
-              onChange={(event) => { setRoute(event.target.value) }}
-            />
-          </div>
-          {/* A rejected id reads as a fault, not as guidance — the same split the
-              key field below already makes between its failure and its hint. */}
-          {routeInvalid || routeTaken
-            ? <p className={styles['error']}>{t(routeInvalid ? 'customRouteInvalid' : 'customRouteTaken')}</p>
-            : <p className={styles['advancedHint']}>{t('customRouteHint')}</p>}
-          <div className={styles['field']}>
-            <span className={styles['fieldLabel']}>{t('customDisplayName')}</span>
-            <input
-              className={styles['input']}
-              type="text"
-              value={displayName}
-              placeholder={route.length === 0 ? t('customDisplayName') : route}
-              aria-label={t('customDisplayName')}
-              disabled={profileDisabled}
-              onChange={(event) => { setDisplayName(event.target.value) }}
-            />
-          </div>
-        </>
-      )}
+      <div className={styles['field']}>
+        <span className={styles['fieldLabel']}>{t('customRoute')}</span>
+        <input
+          className={styles['input']}
+          type="text"
+          value={route}
+          placeholder="acme-gateway"
+          aria-label={t('customRoute')}
+          disabled={profileDisabled}
+          onChange={(event) => { setRoute(event.target.value) }}
+        />
+      </div>
+      {/* A rejected id reads as a fault, not as guidance — the same split the
+          key field below already makes between its failure and its hint. */}
+      {routeInvalid || routeTaken
+        ? <p className={styles['error']}>{t(routeInvalid ? 'customRouteInvalid' : 'customRouteTaken')}</p>
+        : <p className={styles['advancedHint']}>{t('customRouteHint')}</p>}
+      <div className={styles['field']}>
+        <span className={styles['fieldLabel']}>{t('customDisplayName')}</span>
+        <input
+          className={styles['input']}
+          type="text"
+          value={displayName}
+          placeholder={route.length === 0 ? t('customDisplayName') : route}
+          aria-label={t('customDisplayName')}
+          disabled={profileDisabled}
+          onChange={(event) => { setDisplayName(event.target.value) }}
+        />
+      </div>
       <div className={styles['field']}>
         <span className={styles['fieldLabel']}>{t('baseUrl')}</span>
         <input
@@ -277,7 +269,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           placeholder={t(BASE_URL_PLACEHOLDERS[protocol] ?? 'customBaseUrlPlaceholder')}
           aria-label={t('baseUrl')}
           aria-invalid={baseUrlInvalid}
-          disabled={profileDisabled || (props.cialloApi === true && listBusy)}
+          disabled={profileDisabled}
           onChange={(event) => { setBaseURL(event.target.value) }}
         />
       </div>
@@ -288,7 +280,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           className={`${styles['input']} ${styles['selectInput']}`}
           value={protocol}
           aria-label={t('customApi')}
-          disabled={profileDisabled || (props.cialloApi === true && listBusy)}
+          disabled={profileDisabled}
           onChange={(event) => { setProtocol(event.target.value) }}
         >
           {protocols.map(choice => <option key={choice} value={choice}>{protocolLabel(t, choice)}</option>)}
@@ -301,8 +293,8 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
           value={keyDraft}
           placeholder={t('keyPlaceholder')}
           aria-label={t('keyInput')}
-          required={keyRequired}
-          disabled={disabled || (props.cialloApi === true && listBusy)}
+          required={protocolNeedsKey(protocol)}
+          disabled={disabled}
           onChange={(event) => { setKeyDraft(event.target.value) }}
         />
         {/* A create card has no stored key to keep, so the blank case says
@@ -320,16 +312,13 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
         reasoningLevelsOnly={reasoning.levelsOnly}
         probe={{
           settingsNs: NS,
-          ...props.cialloApi ? { provider: CIALLO_API.provider } : {},
           baseURL: normalizedBaseURL,
           api: protocol,
           ...keyValue.length === 0 ? {} : { apiKey: keyValue },
         }}
         probeBlocked={baseUrlInvalid
           ? 'customBaseUrlInvalid'
-          : props.cialloApi && normalizedBaseURL === ''
-            ? 'fetchNeedsBaseUrl'
-            : keyFailure === 'keyBlank' ? 'keyBlankNew' : keyFailure}
+          : keyFailure === 'keyBlank' ? 'keyBlankNew' : keyFailure}
         operations={operations}
         t={t}
         disabled={profileDisabled}
@@ -342,7 +331,7 @@ export function CustomProviderCard(props: CustomProviderCardProps): ReactNode {
       <EditorFooter
         t={t}
         busy={busy}
-        submitDisabled={disabled || !ready || (props.cialloApi === true && listBusy)}
+        submitDisabled={disabled || !ready}
         submitLabelKey="create"
         submitBusyLabelKey="creating"
         onCancel={() => { props.onClose(committed) }}

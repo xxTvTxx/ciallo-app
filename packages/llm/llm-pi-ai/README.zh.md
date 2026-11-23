@@ -85,6 +85,7 @@ kind: "package-reference"
 | `models` | 已安装目录 | 整体替换路由目录；每个条目从已安装模型取默认值 |
 | `modelOverrides` | 无 | 重塑个别已安装目录模型，而不替换其余模型 |
 | `compat` | 目录检测 | 无法识别端点的协议兼容开关 |
+| `sessionAffinity` | CialloAPI 的 Anthropic 路由开启 | 把根 Session ID 作为 Anthropic `metadata.user_id` 发送 |
 | `defaultContextWindow` | `1,000,000` | 未描述模型的容量回退 |
 | `defaultMaxTokens` | `128,000` | 未描述模型的输出上限回退 |
 | `requestImagePixelBudget` | `4,194,304` | 每张确定性请求图片的总像素预算 |
@@ -118,7 +119,9 @@ profile 的 `models` 列表会替换而非扩展路由的已安装目录；每�
 
 对于自托管 Chat Completions 端点，`thinkingTokenBudgetField` 选择推理预算参数，`vllmPriority` 在服务端启用优先级调度时设置整数调度优先级。模板参数接受 `$var: thinking.budget`。`openai-responses` 网关可设置 `supportsMaxOutputTokens: false` 来省略 `max_output_tokens`；Azure 与 Codex 传输会忽略这个共享兼容字段。这些控制均需显式启用；目录拥有的 Anthropic effort 和回退能力不是可配置开关。
 
-`https://cialloapi.com` 上以 `anthropic-messages` 或 `openai-responses` 访问的 `cialloapi` 路由带有内置元数据。条目未声明 `reasoningEfforts` 时，Claude Opus 5.5、Sonnet 5.5 和 Haiku 5.5 提供 `low` 至 `max` 等级，`anthropic-messages` 以 adaptive thinking 发送这些等级。模型发现从 `GET /v1/models` 取得模型列表，再用同一密钥请求网关的 Codex 清单 `/v1/models?client_version=0.158.0`，按模型 ID 合并上下文窗口、推理等级和默认等级。清单请求失败或超时（4 秒）时保留普通列表结果。
+CialloAPI 分组路由命名为 `cialloapi` 和 `cialloapi-<n>`（n ≥ 2）；网关的每个 API 密钥只属于一个分组，所以模型页为每个密钥保存一条路由。在 `https://cialloapi.com` 上以 `anthropic-messages` 或 `openai-responses` 访问时，条目未声明 `reasoningEfforts` 的 Claude Opus 5.5、Sonnet 5.5 和 Haiku 5.5 提供 `low` 至 `max` 等级，`anthropic-messages` 以 adaptive thinking 发送这些等级。模型发现从 `GET /v1/models` 取得模型列表，再用同一密钥请求网关的 Codex 清单 `/v1/models?client_version=0.158.0`，按模型 ID 合并上下文窗口、推理等级和默认等级。清单请求失败或超时（4 秒）时保留普通列表结果。
+
+`sessionAffinity` 以 Claude Code 的 JSON 格式把根 Session ID 作为 Anthropic `metadata.user_id` 发送（`device_id` 为 `dsh-<主机名>`），按该字段选择上游账号的网关因此把一个会话及其子智能体固定在同一账号，提示缓存保持有效。它只作用于 `anthropic-messages` 模型；未设置时，CialloAPI 的 Anthropic 路由默认开启，其他路由默认关闭。路由的 `cacheRetention` 是默认提示缓存时长：未设置或 `short` 不发送 `ttl`（5 分钟），`long` 发送 `ttl: "1h"`。通过 `ctx.llm.setSessionCacheRetention()` 做出的 Session 选择会覆盖该 Session 的 Anthropic 请求，没有自己选择的子智能体使用根 Session 的选择，此时路由在精确模型元数据中报告 `cacheRetention`；`none` 关闭缓存及该选择。
 
 ### 运行时更改配置
 

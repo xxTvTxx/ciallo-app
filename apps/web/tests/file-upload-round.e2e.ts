@@ -230,8 +230,11 @@ describe('web e2e: generic file upload through the real assembly', () => {
     await input.waitFor({ timeout: 10_000 })
     const modelTrigger = page.getByRole('button', { name: /^Select model, current/ })
     await modelTrigger.click()
-    await page.getByRole('menuitem', { name: /^Model\b/ }).click()
-    await page.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash-Vision-Exp' }).click()
+    const row = page.getByRole('menuitemradio', { name: 'DeepSeek-V4-Flash-Vision-Exp' })
+    await row.click()
+    // A model with effort levels expands first; its preselected default effort saves it.
+    const settings = row.locator('xpath=following-sibling::*[1][@data-model-settings]')
+    if (await settings.count() > 0) await settings.locator('[data-model-chip="effort"][aria-checked="true"]').click()
     await expect.poll(() => modelTrigger.getAttribute('aria-label'), { timeout: 10_000 })
       .toContain('DeepSeek-V4-Flash-Vision-Exp')
     const imageBytes = await readFile(IMAGE_FIXTURE)

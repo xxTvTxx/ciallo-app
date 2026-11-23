@@ -1,6 +1,4 @@
 /** Models section registration: slot declaration injection, the locale-following label thunk, and HMR recovery. */
-import type { JsonValue } from '@deepseek-ai/dsh-util-values'
-import Schema from '@deepseek-ai/schemastery'
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
@@ -11,12 +9,10 @@ import { remoteDefaultResponses } from '@deepseek-ai/dsh-client-test-runtime/src
 import { ok, RemoteMock } from '@deepseek-ai/dsh-remote-mock'
 import { apply as settingsApply, inject as settingsInject } from '@deepseek-ai/dsh-client-ui-settings/client'
 import { apply, inject, refreshIfLoaded } from '@deepseek-ai/dsh-client-ui-settings-models/client'
-import {
-  WELCOME_NOTICE_ACK_FIELD, WELCOME_NOTICE_SETTINGS_NAMESPACE, WELCOME_NOTICE_VERSION,
-} from '../src/onboarding-copy.ts'
 import { ModelsSection } from '../src/client/ModelsSection.tsx'
 import { DeepSeekOnboardingDialog } from '../src/client/DeepSeekOnboardingDialog.tsx'
-import { WelcomeNotice } from '../src/client/WelcomeNotice.tsx'
+import { CialloStartDialog } from '../src/client/CialloStartDialog.tsx'
+import type { CialloStartInjected } from '../src/client/CialloStartDialog.tsx'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { ObservableSnapshot } from '@deepseek-ai/dsh-client-store'
 import * as hostPlugin from '../src/index.ts'
@@ -66,9 +62,9 @@ function declare(slots: SlotRegistry): () => void {
   )
 }
 
-/** The official-DeepSeek step's injected automatic-onboarding source. */
-function automaticSource(slots: SlotRegistry): ObservableSnapshot<boolean> {
-  const entry = slots.entries('settings.onboarding').find(candidate => candidate.options.id === 'deepseek-official')!
+/** One onboarding step's injected automatic-onboarding source. */
+function automaticSource(slots: SlotRegistry, id = 'ciallo-start'): ObservableSnapshot<boolean> {
+  const entry = slots.entries('settings.onboarding').find(candidate => candidate.options.id === id)!
   return (entry.inject as () => { hooks: { automatic: ObservableSnapshot<boolean> } })().hooks.automatic
 }
 
@@ -86,8 +82,9 @@ describe('ui-settings-models apply', () => {
     try {
       const plugin = ctx.plugin({ inject: [...inject], apply }, syncedConfig({ credentialOnboarding: false }))
       await plugin.await()
-      expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['welcome-notice', 'deepseek-official'])
+      expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['ciallo-start', 'deepseek-official'])
       expect(automaticSource(slots).getSnapshot()).toBe(false)
+      expect(automaticSource(slots, 'deepseek-official').getSnapshot()).toBe(false)
       expect(slots.entries('settings.section').map(entry => entry.options.id)).toEqual(['models'])
       await plugin.dispose()
       expect(slots.entries('settings.onboarding')).toEqual([])
@@ -112,18 +109,23 @@ describe('ui-settings-models apply', () => {
       expect(listener).toHaveBeenCalledTimes(1)
       expect(source.getSnapshot()).toBe(false)
       unsubscribe()
+      // The official-DeepSeek step opens only on request, whatever the switch says.
+      const deepSeek = automaticSource(slots, 'deepseek-official')
+      value.set(true)
+      expect(deepSeek.getSnapshot()).toBe(false)
+      deepSeek.subscribe(listener)()
     } finally {
       await ctx.fiber.dispose()
     }
   })
 
-  it('leaves automatic onboarding and the welcome notice to the native shell', async () => {
+  it('leaves automatic onboarding to the native shell', async () => {
     vi.stubGlobal('dshDesktop', {})
     const { ctx, slots } = await bench()
     declare(slots)
     try {
       await ctx.plugin({ inject: [...inject], apply }, syncedConfig({ credentialOnboarding: true })).await()
-      expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['deepseek-official'])
+      expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['ciallo-start', 'deepseek-official'])
       expect(automaticSource(slots).getSnapshot()).toBe(false)
     } finally {
       await ctx.fiber.dispose()
@@ -157,10 +159,12 @@ describe('ui-settings-models apply', () => {
     expect(typeof injected.operations.writeSettings).toBe('function')
     const onboarding = before.slots.entries('settings.onboarding')
     expect(onboarding).toHaveLength(2)
-    expect(onboarding.find(entry => entry.options.id === 'welcome-notice')).toMatchObject({
-      component: WelcomeNotice,
-      options: { id: 'welcome-notice', order: -100 },
-    })
+    const start = onboarding.find(entry => entry.options.id === 'ciallo-start')!
+    expect(start).toMatchObject({ component: CialloStartDialog, options: { id: 'ciallo-start', order: -100 } })
+    const startInjected = (start.inject as unknown as () => CialloStartInjected)()
+    expect(startInjected.hooks.models).toBe(injected.controller.store)
+    expect(startInjected.controller).toBe(injected.controller)
+    expect(startInjected.t('startTitle')).toBe('开始使用 Ciallo')
     const deepSeek = onboarding.find(entry => entry.options.id === 'deepseek-official')!
     expect(deepSeek.component).toBe(DeepSeekOnboardingDialog)
     const analytics = (deepSeek.inject!() as object) as import('../src/client/DeepSeekOnboardingDialog.tsx').DeepSeekOnboardingInjected
@@ -308,43 +312,6 @@ describe('pushed invalidations', () => {
     const load = vi.spyOn(injected.controller, 'load').mockResolvedValue()
     b.remote.emit('credentials/reference-updated', ['DEEPSEEK_API_KEY'])
     expect(load).toHaveBeenCalledTimes(1)
-  })
-
-  it('welcome state follows the shared mirror across document commits', async () => {
-    // The welcome notice derives from its settings scope: a document commit
-    // reaches it through the mirror's one refresh, with no routing here.
-    const mock = RemoteMock.create().load(remoteDefaultResponses)
-    const namespace = {
-      ns: WELCOME_NOTICE_SETTINGS_NAMESPACE,
-      schema: JSON.parse(JSON.stringify(Schema.object({ [WELCOME_NOTICE_ACK_FIELD]: Schema.string() }).toJSON())) as JsonValue,
-      value: {},
-      autoGenerate: true, applies: 'live' as const,
-      secrets: [],
-      revision: 0,
-    }
-    const document = { writable: true, hasDocument: false, namespaces: [namespace] }
-    mock.remote.settings.describe.mockResolvedValue(ok(document))
-    const b = await bench(mock)
-    declare(b.slots)
-    await b.ctx.plugin({ inject: [...inject], apply }, syncedConfig({})).await()
-    const entry = b.slots.entries('settings.onboarding')
-      .find(candidate => candidate.options.id === 'welcome-notice')!
-    const injected = (
-      entry.inject as unknown as
-      () => import('../src/client/WelcomeNotice.tsx').WelcomeNoticeInjected
-    )()
-    await injected.controller.load()
-    await vi.waitFor(() => {
-      expect(injected.hooks.welcome.getSnapshot()).toMatchObject({ status: 'ready', acknowledged: false })
-    })
-    mock.remote.settings.describe.mockResolvedValue(ok({
-      ...document,
-      namespaces: [{ ...namespace, value: { [WELCOME_NOTICE_ACK_FIELD]: WELCOME_NOTICE_VERSION }, revision: 1 }],
-    }))
-    b.remote.emit('settings/document-updated', ['ui-settings-general', 1])
-    await vi.waitFor(() => {
-      expect(injected.hooks.welcome.getSnapshot()).toMatchObject({ status: 'ready', acknowledged: true })
-    })
   })
 
   it('joins the refreshed mirror view on a settings invalidation', async () => {

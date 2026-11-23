@@ -52,6 +52,17 @@ describe('ModelReasoningEfforts', () => {
     expect(writes.at(-1)).toEqual({ id: 'chat', reasoningEfforts: { low: 'low' } })
   })
 
+  it('keeps a default whose level remains, shows a stored default outside the levels, and returns to automatic', () => {
+    const { writes } = renderGroup({ id: 'chat', reasoningEfforts: { low: 'low', high: 'high' }, defaultReasoningEffort: 'max' })
+    const defaultEffort = screen.getByRole<HTMLSelectElement>('combobox', { name: `${en.modelReasoningDefault} 1` })
+    expect([...defaultEffort.options].map(option => option.value)).toEqual(['', 'max', 'low', 'high'])
+    fireEvent.change(defaultEffort, { target: { value: 'high' } })
+    fireEvent.click(remove('low'))
+    expect(writes.at(-1)).toEqual({ id: 'chat', reasoningEfforts: { high: 'high' }, defaultReasoningEffort: 'high' })
+    fireEvent.change(defaultEffort, { target: { value: '' } })
+    expect(writes.at(-1)).toEqual({ id: 'chat', reasoningEfforts: { high: 'high' } })
+  })
+
   it.each([
     ['absent', { id: 'chat' }],
     ['false', { id: 'chat', reasoningEfforts: false }],
@@ -291,6 +302,8 @@ describe('reasoning levels in the model list', () => {
     discoverModels: () => Promise.resolve({ kind: 'found', models: [] }),
     storeCredential: vi.fn(),
     removeCredential: vi.fn(),
+    defaultModelAvailable: vi.fn(),
+    saveDefaultModel: vi.fn(),
     writeSettings: vi.fn(),
   }
 

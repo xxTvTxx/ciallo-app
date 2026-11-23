@@ -87,8 +87,11 @@ describe.each(MODE === 'record' ? ['deepseek-official'] : ['deepseek-official', 
   async function selectModel(name: string): Promise<void> {
     const trigger = page.getByRole('button', { name: /^Select model, current/ })
     await trigger.click()
-    await page.getByRole('menuitem', { name: /^Model\b/ }).click()
-    await page.getByRole('menuitemradio', { name, exact: true }).click()
+    const row = page.getByRole('menuitemradio', { name, exact: true })
+    await row.click()
+    // A model with effort levels expands first; its preselected default effort saves it.
+    const settings = row.locator('xpath=following-sibling::*[1][@data-model-settings]')
+    if (await settings.count() > 0) await settings.locator('[data-model-chip="effort"][aria-checked="true"]').click()
     await expect.poll(() => trigger.getAttribute('aria-label')).toContain(name)
     // The durable projection can update the label before the selection reply closes the menu.
     await expect.poll(() => trigger.getAttribute('aria-expanded'), { timeout: 10_000 }).toBe('false')

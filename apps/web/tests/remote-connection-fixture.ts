@@ -56,9 +56,6 @@ export async function launchRemoteConnectionFixture(secure: boolean, ticketLifet
       '- id: workspace-controller',
       '  config:',
       `    documentsDirectory: ${JSON.stringify(join(root, 'documents'))}`,
-      '- id: ui-settings-general',
-      '  config:',
-      "    welcomeNoticeVersion: '2026-09-28.1'",
       ...ticketLifetimeMs === undefined ? [] : [
         '- id: remote-connection',
         '  config:',

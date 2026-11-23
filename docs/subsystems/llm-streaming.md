@@ -619,6 +619,23 @@ interface LlmModelReasoningInfo {
 ```
 
 ```ts type-equiv
+/**
+ * Prompt-cache lifetime a request asks a caching provider for. `short` is the
+ * provider default (five minutes on Anthropic); `long` is the extended
+ * lifetime (one hour on Anthropic), whose cache writes cost more.
+ */
+type LlmCacheRetention = 'short' | 'long'
+```
+
+```ts type-equiv
+/** A model that honors a per-Session prompt-cache lifetime choice. */
+interface LlmCacheRetentionInfo {
+  /** Lifetime its requests use while the Session has made no choice. */
+  default: LlmCacheRetention
+}
+```
+
+```ts type-equiv
 /** Exact-route model metadata resolved by its owning adapter. */
 interface LlmResolvedModelInfo extends LlmModelInfo {
   /** Provider-owned context capacity when known. */
@@ -631,6 +648,8 @@ interface LlmResolvedModelInfo extends LlmModelInfo {
   systemPromptUpdate?: SystemPromptUpdate
   /** Declared mid-conversation tool declaration handling; absent means every request declares the complete tool list. */
   toolUpdate?: ToolUpdate
+  /** Per-Session prompt-cache lifetime choice, when the route honors one. */
+  cacheRetention?: LlmCacheRetentionInfo
 }
 ```
 
@@ -1038,6 +1057,29 @@ Source: [`packages/llm/deepseek-llm-api-extensions/src/index.ts`](../../packages
 The abstract `llm` service: an adapter registry plus a streaming model-call API, interceptable via the `llm/stream` waterfall.
 
 ```ts cordis-catalog
+/**
+ * Read one Session's prompt-cache lifetime choice. Adapters consult it per
+ * request; a Session without a choice follows its route default.
+ * @param sessionId - Session id.
+ * @returns the chosen lifetime, or undefined when none was chosen.
+ */
+sessionCacheRetention(sessionId: string): LlmCacheRetention | undefined
+
+/**
+ * Read one Session's prompt-cache lifetime choice for a configuration surface.
+ * @param sessionId - Session id.
+ * @returns the choice, with `retention` absent when the Session follows its route default.
+ */
+@Remote('sessionCacheRetention') remoteSessionCacheRetention(sessionId: string): { retention?: LlmCacheRetention }
+
+/**
+ * Record one Session's prompt-cache lifetime; later requests of that Session
+ * and its subagents use it. The choice never changes route configuration.
+ * @param sessionId - Session id.
+ * @param retention - lifetime to use, or null to follow the route default again.
+ */
+@Remote async setSessionCacheRetention(sessionId: string, retention: LlmCacheRetention | null): Promise<void>
+
 /**
  * Register an adapter for the given provider routes. Throws `LlmError` with code
  * `DUPLICATE_ADAPTER` if any provider already has an adapter (all-or-nothing).

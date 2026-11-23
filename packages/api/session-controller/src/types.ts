@@ -99,12 +99,20 @@ export interface ModelReasoning {
   readonly defaultEffort?: string
 }
 
+/** Per-Session prompt-cache lifetime choice a model honors. */
+export interface ModelCacheRetention {
+  /** Lifetime used while the Session has made no choice: `short` (five minutes) or `long` (one hour). */
+  readonly default: 'short' | 'long'
+}
+
 /** One model displayed inside its provider group. */
 export interface ModelCatalogModel {
   readonly id: string
   readonly name: string
   readonly description?: string
   readonly reasoning?: ModelReasoning
+  /** Present when the Session may choose this model's prompt-cache lifetime. */
+  readonly cacheRetention?: ModelCacheRetention
   /** Provider-authored label shown beside the name; display data only. */
   readonly badge?: LlmModelBadge
 }

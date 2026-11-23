@@ -11,6 +11,7 @@ import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typer
 import { deepFreeze } from '@deepseek-ai/dsh-util-values'
 import type {
   GenerateOptions,
+  LlmCacheRetention,
   RequestMessage,
   LlmConfigurableProvider,
   LlmDiscoveredModel,
@@ -40,6 +41,7 @@ import {
   contentHasFile, contentHasImage, fileHandleText, projectFilesToText, projectImagesForTextModel, projectToolUpdates,
 } from './content.ts'
 import type { FileAttachmentRef, ImageAttachmentRef, ImageRequestTarget } from '@deepseek-ai/dsh-attachment'
+import { SessionCacheRetentions } from './session-cache-retention.ts'
 
 export * from './attribution.ts'
 export * from './brand.ts'
@@ -341,8 +343,43 @@ export class LlmRuntime extends TypertRemoteService {
     (request: LlmModelDiscoveryRequest, signal?: AbortSignal) => Promise<readonly LlmDiscoveredModel[]>
   >()
 
+  private readonly cacheRetentions: SessionCacheRetentions
+
   constructor(ctx: Context) {
     super(ctx, 'llm')
+    this.cacheRetentions = new SessionCacheRetentions(ctx)
+  }
+
+  /**
+   * Read one Session's prompt-cache lifetime choice. Adapters consult it per
+   * request; a Session without a choice follows its route default.
+   * @param sessionId - Session id.
+   * @returns the chosen lifetime, or undefined when none was chosen.
+   */
+  sessionCacheRetention(sessionId: string): LlmCacheRetention | undefined {
+    return this.cacheRetentions.get(sessionId)
+  }
+
+  /**
+   * Read one Session's prompt-cache lifetime choice for a configuration surface.
+   * @param sessionId - Session id.
+   * @returns the choice, with `retention` absent when the Session follows its route default.
+   */
+  @Remote('sessionCacheRetention')
+  remoteSessionCacheRetention(sessionId: string): { retention?: LlmCacheRetention } {
+    const retention = this.cacheRetentions.get(sessionId)
+    return retention === undefined ? {} : { retention }
+  }
+
+  /**
+   * Record one Session's prompt-cache lifetime; later requests of that Session
+   * and its subagents use it. The choice never changes route configuration.
+   * @param sessionId - Session id.
+   * @param retention - lifetime to use, or null to follow the route default again.
+   */
+  @Remote
+  async setSessionCacheRetention(sessionId: string, retention: LlmCacheRetention | null): Promise<void> {
+    await this.cacheRetentions.set(sessionId, retention ?? undefined)
   }
 
   /** Notify topology observers without letting one broken listener veto the commit. */
@@ -805,6 +842,14 @@ export class LlmRuntime extends TypertRemoteService {
         'INVALID_MODEL_INFO',
       )
     }
+    // Widened: adapters derive the default lifetime from route config.
+    const cacheRetention: string | undefined = resolved.cacheRetention?.default
+    if (resolved.cacheRetention !== undefined && cacheRetention !== 'short' && cacheRetention !== 'long') {
+      throw new LlmError(
+        `adapter returned invalid cache lifetime metadata for provider "${provider}" model "${model}"`,
+        'INVALID_MODEL_INFO',
+      )
+    }
     const defaultMaxTokens = resolved.defaultMaxTokens
     if (defaultMaxTokens !== undefined
       && (!Number.isSafeInteger(defaultMaxTokens) || defaultMaxTokens <= 0)) {
@@ -823,6 +868,7 @@ export class LlmRuntime extends TypertRemoteService {
       ...defaultMaxTokens === undefined ? {} : { defaultMaxTokens },
       ...resolved.systemPromptUpdate === undefined ? {} : { systemPromptUpdate: resolved.systemPromptUpdate },
       ...resolved.toolUpdate === undefined ? {} : { toolUpdate: resolved.toolUpdate },
+      ...resolved.cacheRetention === undefined ? {} : { cacheRetention: { default: resolved.cacheRetention.default } },
     }
     const reasoning = resolved.reasoning
     if (reasoning === undefined) return info

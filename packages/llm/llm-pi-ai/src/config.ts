@@ -42,6 +42,7 @@ import type {
   RouteCatalog,
 } from './catalog.ts'
 import { buildProvider, supportedProtocols } from './provider.ts'
+import { defaultSessionAffinity } from './ciallo.ts'
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
@@ -168,6 +169,13 @@ export interface PiAiProviderProfile {
   thinkingBudgets?: ThinkingBudgets
   /** Prompt-cache retention preference. */
   cacheRetention?: CacheRetention
+  /**
+   * Send the root Session id as Anthropic `metadata.user_id` in Claude Code's
+   * JSON layout, so a gateway that selects upstream accounts by it keeps one
+   * session and its subagents on one account. Applies to `anthropic-messages`
+   * models only. Unset is on for CialloAPI Anthropic routes and off elsewhere.
+   */
+  sessionAffinity?: boolean
   /** Streaming transport preference. */
   transport?: Transport
   /** HTTP/provider SDK timeout in milliseconds. */
@@ -213,7 +221,7 @@ export interface PiAiProviderProfile {
 
 /** Validated profile with its route stamped and every adapter-owned default resolved. */
 export interface ResolvedPiAiProviderProfile
-  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName' | 'requestImageMaxBytes'> {
+  extends Omit<PiAiProviderProfile, 'apiKeyEnv' | 'retryPolicy' | 'models' | 'displayName' | 'requestImageMaxBytes' | 'sessionAffinity'> {
   /** Harness route key and the `Models` collection key (the configuration dict key). */
   provider: string
   /** Resolved display name for selectors and configuration surfaces. */
@@ -253,6 +261,8 @@ export interface ResolvedPiAiProviderProfile
   configuredMaxTokens: ReadonlyMap<string, number>
   /** Request effort per model id when the call names none; wins over the route's `reasoning`. */
   defaultReasoningEfforts: ReadonlyMap<string, ModelThinkingLevel>
+  /** Whether Anthropic requests carry the root Session id as `metadata.user_id`, after defaulting. */
+  sessionAffinity: boolean
 }
 
 /** Plugin configuration: the provider routes this instance owns. */
@@ -376,6 +386,7 @@ const profile = z.object({
   reasoning: z.union(THINKING_LEVELS),
   thinkingBudgets,
   cacheRetention: z.union(['none', 'short', 'long']),
+  sessionAffinity: z.boolean(),
   transport: z.union(['sse', 'websocket', 'websocket-cached', 'auto']),
   timeoutMs: z.natural(),
   websocketConnectTimeoutMs: z.natural(),
@@ -552,7 +563,9 @@ export function resolveProfiles(
       if (validation === 'strict' || !(error instanceof PiAiCatalogError)) throw error
       catalogError ??= error.message
     }
-    const { apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, requestImageMaxBytes, ...rest } = source
+    const {
+      apiKeyEnv, retryPolicy, models: _models, displayName: _displayName, requestImageMaxBytes, sessionAffinity, ...rest
+    } = source
     resolved.set(provider, {
       ...rest,
       ...requestImageMaxBytes === undefined ? {} : { maxImageBytes: requestImageMaxBytes },
@@ -570,6 +583,7 @@ export function resolveProfiles(
       ...rest.thinkingBudgets === undefined ? {} : { thinkingBudgets: { ...rest.thinkingBudgets } },
       configuredMaxTokens: catalog?.configuredMaxTokens ?? new Map(),
       defaultReasoningEfforts: catalog?.defaultReasoningEfforts ?? new Map(),
+      sessionAffinity: sessionAffinity ?? defaultSessionAffinity(provider, source.api),
       modelErrors: catalog?.modelErrors ?? new Map(),
       ...piProvider === undefined ? {} : { piProvider },
       ...catalogError === undefined ? {} : { catalogError },

@@ -3,7 +3,7 @@ import type { RemoteResult } from '@deepseek-ai/dsh-typert-protocol'
 import type { ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import type { ModelCatalogModel, ModelProviderGroup } from '@deepseek-ai/dsh-api-session-controller/types'
 import type { SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { ModelDirectoryState } from './directory.ts'
+import type { CacheRetention, ModelDirectoryState } from './directory.ts'
 
 /** Catalog data for a model name inside the composer's existing controls. */
 export interface ModelLabelOwner {
@@ -11,15 +11,15 @@ export interface ModelLabelOwner {
   provider: Pick<ModelProviderGroup, 'id' | 'name'>
   /** The exact provider's model catalog entry. */
   model: ModelCatalogModel
-  /** Trigger caption, root-menu current value, or selectable model row. */
-  placement: 'trigger' | 'menu' | 'option'
+  /** Trigger caption or selectable model row. */
+  placement: 'trigger' | 'option'
   /** Whether this provider/model pair is the current selection. */
   selected: boolean
 }
 
 /** Data identifying a keyed contribution displayed as a detail pane of the model menu. */
 export interface ModelMenuPaneRef {
-  /** Registration key in conversation.input.model.pane; also marks its root button's data-model-menu-pane. */
+  /** Registration key in conversation.input.model.pane; also marks its option button's data-model-menu-pane. */
   key: string
   /** Localized accessible name of the detail pane. */
   title: string
@@ -35,11 +35,11 @@ export interface ModelMenuControls {
   reportFailure: (message: string) => void
 }
 
-/** Root-menu controls for opening plugin-owned settings panes. */
+/** Model-menu option controls for opening plugin-owned settings panes. */
 export type ModelMenuOptions = ModelMenuControls & {
   /**
    * Open pane.key in conversation.input.model.pane with pane.title as its localized accessible name.
-   * The root button's data-model-menu-pane must match pane.key for focus return.
+   * The option button's data-model-menu-pane must match pane.key for focus return.
    */
   openPane: (pane: ModelMenuPaneRef) => void
 }
@@ -47,7 +47,7 @@ export type ModelMenuOptions = ModelMenuControls & {
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface SlotMap {
     /**
-     * Session options appended after model and reasoning controls in the root menu.
+     * Session options listed below the model list, after a divider.
      * Render each interactive entry as a `button` with role `menuitem`, `menuitemradio`, or `switch`:
      * Arrow keys and Tab reach only those rows.
      */
@@ -59,7 +59,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
     /**
      * Plugin-owned content displayed as a model-menu detail pane.
      * The pane places its own initial focus, for example with `autoFocus`; without one,
-     * focus stays on the menu surface, where Escape and Shift+Tab still return to the root menu.
+     * focus stays on the menu surface, where Escape and Shift+Tab still return to the model list.
      */
     'conversation.input.model.pane': {
       kind: 'keyed'
@@ -110,4 +110,10 @@ export interface ModelSelectInjected {
    * @returns the Host outcome, or undefined when this Session cannot select a model.
    */
   select: (selection: ModelSelection) => Promise<RemoteResult<void> | undefined>
+  /**
+   * Choose this Session's prompt-cache lifetime without changing the model.
+   * @param retention - lifetime to use, or null to follow the model default.
+   * @returns the Host outcome, or undefined when this Session cannot select a model.
+   */
+  selectCacheRetention: (retention: CacheRetention | null) => Promise<RemoteResult<void> | undefined>
 }

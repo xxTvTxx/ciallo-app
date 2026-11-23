@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, expect, it, onTestFinished, vi } from 'vitest'
 import type { ComponentProps, ReactNode } from 'react'
 import type { OwnerOf } from '@deepseek-ai/dsh-client-ui-slots'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -9,13 +9,23 @@ import type { ModelDirectoryState } from '../src/client/directory.ts'
 import { ModelSelect } from '../src/client/ModelSelect.tsx'
 import { en } from '../src/client/locales.ts'
 
+// jsdom has no layout; the open list scrolls its highlighted row into view.
+beforeEach(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollIntoView')
+  Object.defineProperty(Element.prototype, 'scrollIntoView', { configurable: true, writable: true, value: vi.fn() })
+  onTestFinished(() => {
+    if (descriptor === undefined) Reflect.deleteProperty(Element.prototype, 'scrollIntoView')
+    else Object.defineProperty(Element.prototype, 'scrollIntoView', descriptor)
+  })
+})
+
 afterEach(cleanup)
 
 function setup(autoFocus = true, extraOption?: ReactNode) {
   const directory = createSnapshotStore<ModelDirectoryState>({
     current: { provider: 'fixture', model: 'fixture' }, routable: true,
     groups: [{ id: 'fixture', name: 'Fixture', models: [{ id: 'fixture', name: 'Fixture' }] }],
-    failures: [], status: 'ready', pending: null, error: null,
+    failures: [], status: 'ready', pending: null, error: null, cacheRetention: null,
   })
   const change = vi.fn()
   const select = vi.fn()
@@ -33,16 +43,20 @@ function setup(autoFocus = true, extraOption?: ReactNode) {
     }
     return options?.fallback ?? null
   }
-  render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={select}
+  render(<ModelSelect locked={false} available directory={directory} load={vi.fn()} select={select} selectCacheRetention={vi.fn()}
     resolveText={text => typeof text === 'string' ? text : text.en} t={makeTranslate(en)} renderSlot={renderSlot} />)
   const trigger = screen.getByRole('button', { name: /^Select model/ })
   fireEvent.click(trigger)
   return { trigger, change, select, directory }
 }
 
-it('dispatches a keyed page and returns focus to its invoking summary on Escape', () => {
+it('lists options below the models and returns from a keyed page to its option row on Escape', () => {
   const { trigger, change, select } = setup()
+  const options = screen.getByRole('menu', { name: 'Session options' })
+  expect(options.contains(screen.getByRole('menuitem', { name: 'Fixture settings' }))).toBe(true)
+  expect(screen.getByRole('menu', { name: 'Model' }).compareDocumentPosition(options) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fixture settings' }))
+  expect(screen.queryByRole('menuitemradio', { name: 'Fixture' })).toBeNull()
   const toggle = screen.getByRole('switch')
   expect(document.activeElement).toBe(toggle)
   expect(screen.getByRole('group', { name: 'Fixture settings' })).toBeTruthy()
@@ -53,6 +67,7 @@ it('dispatches a keyed page and returns focus to its invoking summary on Escape'
   fireEvent.keyDown(toggle, { key: 'Escape' })
   expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Fixture settings' }))
   expect(screen.queryByRole('switch')).toBeNull()
+  expect(screen.getByRole('menuitemradio', { name: 'Fixture' })).toBeTruthy()
   fireEvent.keyDown(document.activeElement!, { key: 'Escape' })
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
   expect(change).not.toHaveBeenCalled()
@@ -78,14 +93,36 @@ it('closes a detail pane on an outside touch press that dispatches no mousedown'
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
 })
 
-it.each([false, true])('closes a detail pane on Tab without changing its setting (shift: %s)', async (shiftKey) => {
+it('closes a detail pane on Tab without changing its setting', async () => {
   const { trigger, change } = setup()
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fixture settings' }))
-  fireEvent.keyDown(screen.getByRole('switch'), { key: 'Tab', shiftKey })
+  fireEvent.keyDown(screen.getByRole('switch'), { key: 'Tab' })
   await act(async () => {})
   expect(trigger.getAttribute('aria-expanded')).toBe('false')
   expect(document.activeElement).toBe(trigger)
   expect(change).not.toHaveBeenCalled()
+})
+
+it('returns from a detail pane to the model list on Shift+Tab, then closes', async () => {
+  const { trigger, change } = setup()
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Fixture settings' }))
+  expect(fireEvent.keyDown(screen.getByRole('switch'), { key: 'Tab', shiftKey: true })).toBe(false)
+  const option = screen.getByRole('menuitem', { name: 'Fixture settings' })
+  expect(document.activeElement).toBe(option)
+  expect(screen.getByRole('menuitemradio', { name: 'Fixture' })).toBeTruthy()
+  fireEvent.keyDown(option, { key: 'Tab', shiftKey: true })
+  await act(async () => {})
+  expect(trigger.getAttribute('aria-expanded')).toBe('false')
+  expect(document.activeElement).toBe(trigger)
+  expect(change).not.toHaveBeenCalled()
+})
+
+it('walks from the model rows onto option rows with the arrow keys', () => {
+  setup()
+  const row = screen.getByRole('menuitemradio', { name: 'Fixture' })
+  expect(document.activeElement).toBe(row)
+  fireEvent.keyDown(row, { key: 'ArrowDown' })
+  expect(document.activeElement).toBe(screen.getByRole('menuitem', { name: 'Fixture settings' }))
 })
 
 it('keeps the default press on focusable plugin options that are not buttons', () => {
@@ -113,4 +150,8 @@ it('keeps the baseline model-save lock on both summary and detail controls', () 
   fireEvent.click(screen.getByRole('menuitem', { name: 'Fixture settings' }))
   act(() => { directory.update((state) => { state.pending = { provider: 'fixture', model: 'fixture' } }) })
   expect(screen.getByRole('switch').hasAttribute('disabled')).toBe(true)
+  // A locked option row cannot take focus back; the trigger keeps the menu's keys.
+  fireEvent.keyDown(screen.getByRole('switch'), { key: 'Escape' })
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Select model/ }))
+  expect(screen.getByRole('menuitem', { name: 'Fixture settings' })).toBeTruthy()
 })

@@ -27,7 +27,8 @@ import { normalizeApiKey } from '@deepseek-ai/dsh-credentials'
 import { INVALID_CREDENTIAL_CODE, LlmError } from '@deepseek-ai/dsh-llm'
 import type { LlmDiscoveredModel, LlmModelDiscoveryOperation } from '@deepseek-ai/dsh-llm'
 import { attributionHeaders } from '@deepseek-ai/dsh-llm'
-import { catalogModels, cialloReasoningEfforts, THINKING_LEVELS } from './catalog.ts'
+import { catalogModels, THINKING_LEVELS } from './catalog.ts'
+import { CIALLO_ORIGIN, cialloReasoningEfforts, isCialloRoute } from './ciallo.ts'
 
 /**
  * Protocols whose model listing this module can read. OpenAI protocols use
@@ -346,6 +347,7 @@ async function cialloCodexMetadata(
   }
 }
 
+/** Selectable levels from a Codex manifest entry, keyed and spelled by their effort ids. */
 function readCodexEfforts(value: unknown): Readonly<Record<string, string>> | undefined {
   if (!Array.isArray(value)) return undefined
   const levels = value.flatMap((record: unknown) => {
@@ -462,7 +464,7 @@ export async function discoverModels(
   }
   if (api === 'google-generative-ai') return readGeminiListing(body)
   const models = readListing(body)
-  if (request.provider !== 'cialloapi' || URL.parse(url)?.origin !== 'https://cialloapi.com'
+  if (!isCialloRoute(request.provider) || URL.parse(url)?.origin !== CIALLO_ORIGIN
     || (api !== 'anthropic-messages' && api !== 'openai-responses')) return models
 
   const metadata = await cialloCodexMetadata(url, apiKey, request.signal)

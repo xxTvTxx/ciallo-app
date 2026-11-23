@@ -1,5 +1,5 @@
 ---
-description: "dsh Web 客户端的模型设置与产品引导插件：提供商行、API 密钥管理、模型列表与 DeepSeek 首次运行弹窗。"
+description: "dsh Web 客户端的模型设置与产品引导插件：CialloAPI 默认卡片、提供商行、API 密钥管理、模型列表与 CialloAPI 首次运行步骤。"
 kind: "package-reference"
 ---
 
@@ -11,7 +11,7 @@ kind: "package-reference"
 
 ## 概述
 
-`dsh-client-ui-settings-models` 是 dsh Web 客户端的 Models 设置页面：用户可以配置 API 密钥（以只写方式存入 profile 的凭据引用之下）、编辑每个提供商的模型列表，并手工声明自定义 pi-ai 路由；页面以提供商行展示，一次只展开一张编辑卡片。该页面把提供商目录、设置文档与凭据描述合并为一个共享快照，因此行的状态在三个方面始终一致。它还会带首次运行的用户走两个有序弹窗——版本化预览版说明，以及按条件显示的官方 DeepSeek 凭据步骤。
+`dsh-client-ui-settings-models` 是 dsh Web 客户端的 Models 设置页面：用户可以配置 API 密钥（以只写方式存入 profile 的凭据引用之下）、编辑每个提供商的模型列表，并手工声明自定义 pi-ai 路由。顶部的 CialloAPI 卡片列出全部 CialloAPI 分组（每个分组对应一个网关 API Key），并可通过粘贴 Key 添加分组；其他提供商以行展示，一次只展开一张编辑卡片。该页面把提供商目录、设置文档与凭据描述合并为一个共享快照，因此行的状态在三个方面始终一致。它还为首次运行的用户提供 CialloAPI Key 步骤，并在显式请求时打开官方 DeepSeek 凭据步骤。
 
 ## 目录
 
@@ -31,15 +31,21 @@ kind: "package-reference"
 
 保存凭据或自定义提供方时保留已选模型。用户可在 composer 中选择可用模型。
 
-提供方列表中 DeepSeek 账号排第一，DeepSeek API 排第二；第三方提供方保留目录中的相对顺序。
+CialloAPI 卡片排在最前。其下的提供方列表中 DeepSeek 账号排第一，DeepSeek API 排第二；第三方提供方保留目录中的相对顺序。
 
-从设置导航打开 Models 页面，即可看到每个已配置的提供方都有一行。其配置键未在任何位置配置的整分节提供方会渲染为其展开的设置卡片而非一行，但仅限首次运行姿态，且仅持续到用户关闭该卡片为止。每一类卡片各自持有自己的展开状态，因此关掉其中一张绝不会丢弃另一张里的草稿。
+从设置导航打开 Models 页面，即可看到每个已配置的提供方都有一行。密钥已确认缺失的整分节提供方（例如尚未填入密钥的 DeepSeek API）不列为一行：「添加模型提供商」提供它，存入密钥后它成为普通行。每一类卡片各自持有自己的展开状态，因此关掉其中一张绝不会丢弃另一张里的草稿。
 
 存在已存储目录错误的提供商仍显示诊断以及编辑、删除入口。添加操作只面向已注册的 settings 命名空间，因此不可用的命名空间不会留下无法打开编辑器的按钮。保存被拒绝时，编辑器保持打开并展示 Host 诊断。
 
 应用设置并关闭编辑器后，当前提供商、settings 与凭据快照就绪时才显示保存状态。打开任一行的编辑器、添加提供商和打开移除确认都会等待该刷新。新打开的 Models 区域或页面加载失败后的重试会等到 ready 快照后才挂载编辑器。后台刷新期间，只要编辑器仍挂载，已打开的草稿就会保留用户的修改；页面加载失败或提供商被移除可能关闭编辑器。
 
-Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会抑制自动凭证引导和 Web 欢迎须知；模型设置页与显式 API Key 编辑仍然可用。[账号插件](../ui-settings-account/README.zh.md#desktop-onboarding)负责 Desktop 引导。其他原生壳可以通过 `credentialOnboarding: false` 仅禁用凭证步骤。该字段是 volatile 字段，经插件的[同步 Config](../modules/README.zh.md#synced-plugin-configuration) 送达浏览器：修改决定尚未挂载的凭证步骤是否自动打开，已挂载的步骤保留其决定，因此已打开的步骤不会被收回。浏览器未收到值时使用 `true`。该字段是配置，不是持久化的完成标记。
+Host 配置 `credentialOnboarding` 默认为 `true`。Electron preload 标记会抑制自动首次运行步骤；模型设置页与显式 API Key 编辑仍然可用。[账号插件](../ui-settings-account/README.zh.md#desktop-onboarding)负责 Desktop 引导。其他原生壳可以通过 `credentialOnboarding: false` 禁用自动步骤。该字段是 volatile 字段，经插件的[同步 Config](../modules/README.zh.md#synced-plugin-configuration) 送达浏览器：修改决定尚未挂载的首次运行步骤是否自动打开，已挂载的步骤保留其决定，因此已打开的步骤不会被收回。浏览器未收到值时使用 `true`。该字段是配置，不是持久化的完成标记。
+
+### CialloAPI 分组
+
+CialloAPI 卡片始终是第一张卡片，并标注「默认」。CialloAPI 网关把每个 API Key 绑定到一个分组，因此每个分组是一条 `llm-pi-ai` 路由：第一个分组为 `cialloapi`，之后依次为 `cialloapi-2`、`cialloapi-3` 等，取最小的未占用编号；适配器把匹配 `^cialloapi(-[2-9]|-[1-9][0-9]+)?$` 的 id 都视为 CialloAPI 路由。每个分组行显示分组名、协议、模型数、凭据提供方给出的 Host 掩码预览、密钥状态点，以及「编辑」「删除」；Claude 分组另起一行显示提示缓存时长与会话粘性。分组名取自路由 `displayName` 中 `CialloAPI · ` 之后的部分；没有分组名的路由显示其识别出的类型，因此已有的单个 `cialloapi` 路由无需迁移即显示为第一个分组。
+
+「添加分组」打开分组编辑器。粘贴的 Key 在输入停顿后获取该分组的模型，模型 id 决定类型：全部或多数以 `claude` 开头为 Claude 分组，使用 `anthropic-messages`；全部或多数以 `gemini` 开头为 Gemini 分组，使用 `google-generative-ai`；其余为 OpenAI 或混合分组，使用 `openai-responses`。列出的模型默认全部启用。编辑器可编辑分组名称、Key、Claude 分组的「提示缓存时长」（5 分钟删除 `cacheRetention`；1 小时写入 `cacheRetention: long`）与「会话粘性」（`sessionAffinity`，新建 Claude 分组默认开启），以及平铺的模型列表：每个模型一个启用勾选框、上下文窗口与默认推理档位；「重新获取」把新列出的模型以未勾选状态加入。协议是「高级」里唯一的设置。保存新分组时先写入 profile，再把 Key 存到 `<ROUTE>_API_KEY` 之下；如果分组创建前部署的默认模型不可用，则分组建议的模型——Claude 分组列出 `claude-opus-5-5` 时选它，否则选第一个启用的模型——通过 `agent-default-model` 设置分节成为默认模型。编辑以路径操作写入已存储的用户层 profile。「修改地址」一次性设置所有分组的网关地址，并按协议推导各自的 base URL 后缀。删除沿用页面的删除确认，同时删除页面管理的 Key。第三方提供商选择器不列出 CialloAPI，自定义 API 表单拒绝 CialloAPI 分组 id。
 
 ### API 密钥
 
@@ -75,11 +81,11 @@ pi-ai 容量字段为空时，上下文窗口显示 `1M`，最大输出 token �
 
 ### 首次运行弹窗
 
-版本化声明步骤完成后，DeepSeek 步骤从同一份合并快照投影首次运行就绪状态。用户已经能够到达的**任何**提供商都会直接结束该步骤、不做渲染；只有没有任何提供商的用户才会被询问官方 DeepSeek 密钥。「稍后配置」只完成这次协调器遍历；适配器缺失、路由不活动、合并失败、只读部署或能力不可用时，该步骤不渲染即完成——Models 仍是诊断界面。
+CialloAPI 步骤（`ciallo-start`）从同一份合并快照投影首次运行就绪状态。用户已经能够到达的**任何**提供商都会直接结束该步骤、不做渲染；否则它请求一个 CialloAPI Key，显示识别出的分组、模型数量与建议的默认模型，「开始使用」按「添加分组」相同的方式创建第一个分组，包括默认模型的切换。「稍后配置」只完成这次协调器遍历；合并失败、只读部署、缺少 `llm-pi-ai` 命名空间或网关协议时，该步骤不渲染即完成——Models 仍是诊断界面。官方 DeepSeek 凭据步骤（`deepseek-official`）只在显式请求时打开，例如账号菜单中的 API Key 选项。
 
 ### 扩展 slot
 
-本分区为仓库外分发的插件声明两个席位，类型定义在 [`src/client/slot-contract.ts`](src/client/slot-contract.ts) 并从 `./client` 导出。`settings.models.provider-card`（keyed）渲染在每张展示目录行的卡片内部——已保存行的卡片、其首次运行 setup 形态、以及「添加提供商」草稿卡——以 `entryKey = settingsNs` 分发，owner props 携带该行的 `ConfigurableProviderView`、其 configured 状态与已确认的 api-key 凭据状态，因此以某适配器家族的 namespace 注册一次即可收到该家族的全部卡片，含手工声明的路由；手工声明的草稿卡尚无目录行，保存之前不分发。`settings.models.footer`（list）渲染在行列表与新增控件之后。注册方通过 `ctx.slots.inject` 激活，并以 type-only import 引入本包 `/client` 入口；没有注册方时两个席位均不渲染任何内容。
+本分区为仓库外分发的插件声明两个席位，类型定义在 [`src/client/slot-contract.ts`](src/client/slot-contract.ts) 并从 `./client` 导出。`settings.models.provider-card`（keyed）渲染在每张展示目录行的卡片内部——已保存行的卡片以及「添加提供商」草稿卡——以 `entryKey = settingsNs` 分发，owner props 携带该行的 `ConfigurableProviderView`、其 configured 状态与已确认的 api-key 凭据状态，因此以某适配器家族的 namespace 注册一次即可收到该家族的全部卡片，含手工声明的路由；手工声明的草稿卡尚无目录行，保存之前不分发。`settings.models.footer`（list）渲染在行列表与新增控件之后。注册方通过 `ctx.slots.inject` 激活，并以 type-only import 引入本包 `/client` 入口；没有注册方时两个席位均不渲染任何内容。
 
 Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepSeek Account**）。该行显示 **已登录** 状态，不提供编辑器：模型来自账号的模型列表，[模型覆盖](../../llm/llm-deepseek-account/README.zh.md#use-this-package)写在 `cordis.patch.yml` 中。账号可用模型目录为空时隐藏账号行，包括登录前和退登后；账号模型恢复可用时重新显示。
 
@@ -109,7 +115,7 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 
 ### 引导协调器
 
-预览版说明在 `src/client/locales.ts` 中持有精确文案，并在 `src/onboarding-copy.ts` 中持有确认版本。认证浏览器通过共享配置表单比较并写入 `ui-settings-general.welcomeNoticeVersion`；只有显式点击「继续」才会记录当前版本；命名空间不可用或写入被拒时，声明保持未确认状态。已确认旧版的用户会再次看到当前说明。DeepSeek 步骤面向 `llm-deepseek` 中的 `deepseek-official`，在共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。
+CialloAPI 步骤读取共享的 Models 合并快照，并通过与 CialloAPI 卡片相同的 Host 操作写入：路由 profile 一次 `settings.mutate`，密钥一次 `credentials.set`，默认模型不可用时再对 `agent-default-model` 分节执行一次 `settings.mutate`；可用性检查在写入 profile 之前读取 `session.modelCatalog`，因为该写入会重新加载全部 `llm-pi-ai` 路由。DeepSeek 步骤面向 `llm-deepseek` 中的 `deepseek-official`，在共享引导模态框内以仅凭据模式渲染既有 `ProviderEditor`；`credentials.set` 仍是唯一的机密写入，且不改变任何提供商设置。
 
 </details>
 
@@ -152,6 +158,7 @@ Models 页面包含 **DeepSeek 账号**（`deepseek-account`，英文为 **DeepS
 - **目录选择框列出的是路由标识符**：`moonshotai`、`zai` 等 pi-ai catalog id 原样显示，没有产品名、别名或搜索。一个把自定义表单作为置顶项的可搜索选择器可以取代方式切换；前提是目录先携带显示名称。
 - **询问覆盖 OpenAI 兼容、Anthropic Messages 与 Gemini API 端点**：OpenAI 协议接受标准 `data` 数组或富信息 `models` 对象，Anthropic 与 Gemini 则使用各自的原生模型列表路由；其余协议会报告自己无法被询问，其模型需手工填写。
 - **未声明的存活路由无处渲染**：未附带可配置提供方声明即注册的路由没有 settings 地址；它在各选择器中仍然可见，但不会出现在本页的行里。
+- **网关地址按分组存储**——「修改地址」会改写每个分组的 `baseURL`，包括 `baseURL` 曾被手工改到其他主机的分组。第一个分组创建之前，所选地址只保存在当前打开的页面里。
 
 <a id="dev-note"></a>
 ### 开发备注

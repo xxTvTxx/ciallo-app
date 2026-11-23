@@ -206,7 +206,8 @@ it('uses 16px text for coarse-pointer font fields and preserves compact fine-poi
   }
 })
 
-it('shares settings card materials and control sizes in both palettes', async () => {
+// This distribution disables the DeepSeek account UI (ui-settings-account).
+it.skip('shares settings card materials and control sizes in both palettes', async () => {
   const scaffold = await launchWebScaffold({})
   onTestFinished(() => scaffold.close())
   await scaffold.ctx.settings.mutate('ui-settings-account', [

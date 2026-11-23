@@ -46,6 +46,7 @@ import {
 import type {
   GenerateOptions,
   ImageAttachmentAccess,
+  LlmCacheRetention,
   LlmModelInfo,
   LlmProviderInfo,
   LlmResolvedModelInfo,
@@ -67,6 +68,7 @@ import { toStreamChunks } from './stream.ts'
 import { bindThinkingToPrefix } from './prefix-binding.ts'
 import type { PrefixDigests } from './prefix-binding.ts'
 import type { PiAiRequestHeaderContext } from './types.ts'
+import { affinityUserId } from './ciallo.ts'
 
 /**
  * Initially active declaration added to an Anthropic request whose projected
@@ -137,6 +139,17 @@ export interface PiAiAdapterOptions {
    * conversation report them again.
    */
   onThinkingOmitted?: (detail: { provider: string; model: string; count: number }) => void
+  /**
+   * Root of one Session's subagent tree: the Session itself when it has no
+   * parent. Session affinity and the Session cache lifetime follow the root so
+   * a subagent reuses its parent's upstream account and cache. Omission treats
+   * every Session as a root.
+   */
+  rootSession?: (sessionId: string) => string
+  /** One Session's prompt-cache lifetime choice; undefined follows the route default. */
+  sessionCacheRetention?: (sessionId: string) => LlmCacheRetention | undefined
+  /** Stable machine identifier carried in Session affinity metadata. */
+  affinityDeviceId?: string
 }
 
 /** The two auth injectables a pi-ai collection is built with. */
@@ -165,6 +178,18 @@ function profileOptions(
     // The agent recovery layer owns visible attempts; one adapter call is one SDK attempt.
     maxRetries: 0,
   }
+}
+
+/**
+ * The per-Session lifetime choice a model honors: Anthropic Messages models
+ * that accept a long cache, on a route that has not turned caching off.
+ */
+function cacheRetentionInfo(
+  model: Model<Api>, profile: ResolvedPiAiProviderProfile,
+): Pick<LlmResolvedModelInfo, 'cacheRetention'> {
+  if (model.api !== 'anthropic-messages' || profile.cacheRetention === 'none'
+    || (model as Model<'anthropic-messages'>).compat?.supportsLongCacheRetention === false) return {}
+  return { cacheRetention: { default: profile.cacheRetention === 'long' ? 'long' : 'short' } }
 }
 
 /**
@@ -391,6 +416,7 @@ export class PiAiAdapter extends LlmAdapter {
       ...configuredMaxTokens === undefined ? {} : { defaultMaxTokens: configuredMaxTokens },
       ...reasoningInfo(resolvedModel, defaultLevel),
       ...conversationUpdates(resolvedModel),
+      ...cacheRetentionInfo(resolvedModel, profile),
     }
   }
 
@@ -471,8 +497,21 @@ export class PiAiAdapter extends LlmAdapter {
       const { context, digest } = bindThinkingToPrefix(converted, model.api, prefixDigests, manualThinking, (count) => {
         this.config.onThinkingOmitted?.({ provider: options.provider, model: options.model, count })
       })
+      const sessionId = options.sessionId === undefined ? undefined : String(options.sessionId)
+      const rootSession = sessionId === undefined ? undefined : this.config.rootSession?.(sessionId) ?? sessionId
+      // A subagent without its own choice uses its root's, so the shared prefix keeps one lifetime.
+      const sessionRetention = sessionId === undefined || rootSession === undefined
+        || cacheRetentionInfo(model, profile).cacheRetention === undefined
+        ? undefined
+        : this.config.sessionCacheRetention?.(sessionId) ?? this.config.sessionCacheRetention?.(rootSession)
+      const affinity = profile.sessionAffinity && model.api === 'anthropic-messages'
+        && rootSession !== undefined && this.config.affinityDeviceId !== undefined
+        ? { metadata: { user_id: affinityUserId(this.config.affinityDeviceId, rootSession) } }
+        : {}
       const events = snapshot.models.streamSimple(model, context, {
         ...profileOptions(profile, reasoning, apiKey),
+        ...sessionRetention === undefined ? {} : { cacheRetention: sessionRetention },
+        ...affinity,
         ...options.temperature === undefined ? {} : { temperature: options.temperature },
         ...options.maxTokens === undefined ? {} : { maxTokens: options.maxTokens },
         ...options.sessionId === undefined ? {} : { sessionId: String(options.sessionId) },
