@@ -1,32 +1,25 @@
-# DeepSeek Harness
+# Ciallo App
 
 [English](README.md) | 中文
 
-DeepSeek Harness（`dsh`）是由 [DeepSeek AI](https://deepseek.com) 开发的开源 agent harness（智能体框架）。
+Ciallo App 是基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 与 [Cordis](https://github.com/cordiverse/cordis) 插件架构打造的开源桌面端与 Web AI Agent 工作台，针对多模型服务商工作流、内置 CialloAPI 支持以及与官方 DeepSeek Harness 同机并行共存做了专项定制。
 
-它构建于**一切皆插件**的架构之上，由 [Cordis](https://github.com/cordiverse/cordis) 驱动，其设计参见论文 [_A Programming Paradigm for Spatiotemporal Composability_](https://arxiv.org/abs/2608.25512)。
+运行本地智能体工具前，请先阅读[安全说明](SAFETY.zh.md)。
 
-文档：[https://deepseek-harness.github.io/deepseek-harness/](https://deepseek-harness.github.io/deepseek-harness/)
+## 核心特性
 
-## 开发者预览
-
-DeepSeek Harness 处于 _开发者预览_ 阶段，正在快速迭代。**未来将出现破坏兼容性的变更。**
-
-运行本项目前，请阅读[安全说明](SAFETY.zh.md)。
+- **内置 CialloAPI 与多服务商路由**：默认集成 CialloAPI 分组，并兼容 OpenAI、Anthropic、Google Gemini 与自定义端点，提供单层模型菜单、按模型配置默认推理档位以及 Claude Prompt Cache 时长与会话粘性支持。
+- **独立桌面身份与数据目录隔离**：桌面端以 `Ciallo` 独立身份及 `ciallo://` 协议运行，Electron 状态目录位于 `%APPDATA%\Ciallo`，数据根目录默认为 `~/.ciallo`（支持通过 `$DSH_HOME` 覆盖），可与官方版 DeepSeek Harness 同机并行使用而互不冲突。
+- **非破坏性一键迁移 `~/.dsh`**：首次启动引导与「设置 → 模型」会自动检测本机已有的 `~/.dsh` 目录，支持一键导入历史会话（含标题与工作区关联）、附件、技能、`AGENTS.md` 以及可选的已保存 API 密钥引用，同时保持原 `~/.dsh` 目录只读。
+- **完整插件化 Harness 能力**：保留多工作区管理、子智能体、Plan 模式、文件与终端工具，以及可从源码复现的桌面安装包构建链。
 
 <a id="run"></a>
 
 ## 运行
 
-### 通过 `npm` 运行
+### 桌面安装包
 
-安装 `Node.js`，然后运行：
-
-```sh
-npx @deepseek-ai/dsh web
-```
-
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
+Windows 预构建安装程序（`ciallo-app-<version>-win-x64.exe`）发布于 [GitHub Releases](https://github.com/xxTvTxx/ciallo-app/releases)；如需在本地从源码构建完全一致的安装包，请参考 [BUILD_WINDOWS.md](BUILD_WINDOWS.md)。
 
 <a id="run-from-source"></a>
 
@@ -35,62 +28,21 @@ npx @deepseek-ai/dsh web
 如需从仓库源码运行：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/xxTvTxx/ciallo-app.git
+cd ciallo-app
 pnpm install
 pnpm run build
 pnpm dsh web
 ```
 
-`pnpm run build` 会准备仓库产物。`pnpm dsh web` 会直接使用这些已构建产物，不会重新构建。
-
-## 社区与支持
-
-- 通过 [GitHub Discussions](https://github.com/deepseek-ai/deepseek-harness/discussions) 提交反馈或 bug 报告。
-- 为你的插件仓库添加 [`dsh-plugin`](https://github.com/topics/dsh-plugin) 话题，便于被发现。
-- 欢迎加入 DeepSeek Harness 企微群！扫描下方二维码填写入群问卷，小助手会定期发送入群邀请。
-
-<table>
-  <thead>
-    <tr>
-      <th align="center">入群问卷</th>
-      <th align="center">微信公众号</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td align="center"><a href="https://trtgsjkv6r.feishu.cn/share/base/form/shrcnIt5twSVdLGD52KJBckGCgg"><img src="https://cdn.deepseek.com/harness/readme/community-wecom-survey.png" alt="DeepSeek Harness 入群问卷二维码" width="180" height="180"></a></td>
-      <td align="center"><img src="https://cdn.deepseek.com/harness/readme/community-wechat-official-account.png" alt="DeepSeek Harness 团队微信公众号二维码" width="180" height="180"></td>
-    </tr>
-  </tbody>
-</table>
-
-## 参与贡献
-
-参见 [CONTRIBUTING.md](CONTRIBUTING.zh.md)。
+`pnpm dsh web` 默认会在 `http://127.0.0.1:3080` 启动 Web UI（可按需传入 `--no-open` 或 `--port 0`，详见 [Web UI 指南](docs/user/guide/index.zh.md)），运行 `pnpm run dev:desktop` 可在开发模式下启动 Electron 桌面端。
 
 ## 开发
 
-请先阅读[开发指南](docs/development.zh.md)与[架构文档](docs/architecture.zh.md)。
+Windows 打包与上游同步流程见 [BUILD_WINDOWS.md](BUILD_WINDOWS.md)，其余开发与架构资料见[开发指南](docs/development.zh.md)、[架构文档](docs/architecture.zh.md)、[CONTRIBUTING.md](CONTRIBUTING.zh.md) 与 [AGENTS.md](AGENTS.md)。
 
-`pnpm run dev:web` 会在一个终端里完成构建、启动，并在源码修改时重建 client bundle；`make help` 列出 Web 与 Desktop 对应的 Make target。完整表格见开发指南的「应用命令」一节。
+## 致谢与许可证
 
-面向 agent：请遵循 [AGENTS.md](AGENTS.md)。
+本项目基于 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（由 [DeepSeek AI](https://deepseek.com) 开源）构建。
 
-## 引用
-
-```bibtex
-@misc{deepseek-harness2026,
-  title={DeepSeek Harness: Everything is a Plugin},
-  author={DeepSeek-AI},
-  year={2026},
-  publisher={GitHub},
-  howpublished={\url{https://github.com/deepseek-ai/deepseek-harness}},
-}
-```
-
-## 许可证
-
-[MIT](LICENSE)
-
-第三方依赖及其许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+采用 [MIT](LICENSE) 许可证发布；第三方依赖及其许可证声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。

@@ -17,9 +17,15 @@ import {
   dshHomeDisplay,
   resolveDshHome,
 } from '@deepseek-ai/dsh-home-paths'
+import type { SessionHeader } from '@deepseek-ai/dsh-session'
 import type {} from '@deepseek-ai/dsh-session-persistence'
-import type {} from '@deepseek-ai/dsh-session-projection-cache'
-import type {} from '@deepseek-ai/dsh-session-query'
+import {
+  checkpointRecord,
+  projectionCacheDomainSpec,
+  type CheckpointIdentity,
+  type CheckpointRecord,
+} from '@deepseek-ai/dsh-session-projection-cache'
+import type {} from '@deepseek-ai/dsh-storage-domain'
 import type {} from '@deepseek-ai/dsh-workspace'
 import { parseDocument } from 'yaml'
 import type {
@@ -29,6 +35,11 @@ import type {
 } from './types.ts'
 
 const SESSION_LOG_FILE = /^session\.v\d+\.jsonl(?:\.zstd)?$/u
+const SAFE_CACHE_KEY_RE = /^[a-zA-Z0-9_-]+$/
+const ACCEPTED_PROJCACHE_VERSIONS = new Set<number>([
+  projectionCacheDomainSpec.version,
+  ...projectionCacheDomainSpec.compatibleVersions,
+])
 const MAX_PROJECTION_WARM_SESSIONS = 200
 const PROJECTION_WARM_YIELD_INTERVAL = 16
 
@@ -262,6 +273,66 @@ async function readLegacyWorkspaceTitles(legacyRoot: string): Promise<Map<string
   return titles
 }
 
+async function loadLegacyWholeUnitProjcache(legacyRoot: string): Promise<ReadonlyMap<string, unknown>> {
+  const map = new Map<string, unknown>()
+  try {
+    const parsed: unknown = JSON.parse(await readFile(join(legacyRoot, 'storages', 'session_projcache.json'), 'utf8'))
+    if (typeof parsed !== 'object' || parsed === null) return map
+    const unit = readObjectProperty(parsed, 'unit')
+    if (typeof unit !== 'object' || unit === null) return map
+    if (readObjectProperty(unit, 'name') !== projectionCacheDomainSpec.name) return map
+    const version = readObjectProperty(unit, 'version')
+    if (typeof version !== 'number' || !ACCEPTED_PROJCACHE_VERSIONS.has(version)) return map
+    const tables = readObjectProperty(parsed, 'tables')
+    if (typeof tables !== 'object' || tables === null || Array.isArray(tables)) return map
+    const sessions = readObjectProperty(tables, 'sessions')
+    if (typeof sessions !== 'object' || sessions === null || Array.isArray(sessions)) return map
+    for (const [key, value] of Object.entries(sessions as Record<string, unknown>)) {
+      map.set(key, value)
+    }
+  } catch {
+    // Absent or unreadable whole-unit legacy cache falls back to cold log folding.
+    return map
+  }
+  return map
+}
+
+async function readLegacyProjcacheRecord(
+  legacyRoot: string,
+  sessionId: string,
+  getWholeUnit: () => Promise<ReadonlyMap<string, unknown>>,
+): Promise<CheckpointRecord | undefined> {
+  if (SAFE_CACHE_KEY_RE.test(sessionId)) {
+    const recordPath = join(legacyRoot, 'storages', 'session_projcache', 'sessions', `${sessionId}.json`)
+    try {
+      const parsed: unknown = JSON.parse(await readFile(recordPath, 'utf8'))
+      if (typeof parsed === 'object' && parsed !== null) {
+        const version = readObjectProperty(parsed, 'version')
+        const rawRecord = readObjectProperty(parsed, 'record')
+        if (typeof version === 'number' && ACCEPTED_PROJCACHE_VERSIONS.has(version)) {
+          const validated = checkpointRecord.safeParse(rawRecord)
+          if (validated.success) return validated.data
+        }
+      }
+    } catch {
+      // Absent, unreadable, or foreign per-record cache falls back to whole-unit or cold fold.
+    }
+  }
+  const wholeUnit = await getWholeUnit()
+  const fallbackRaw = wholeUnit.get(sessionId)
+  if (fallbackRaw === undefined) return undefined
+  const validated = checkpointRecord.safeParse(fallbackRaw)
+  return validated.success ? validated.data : undefined
+}
+
+function legacyCheckpointMatchesHeader(stored: CheckpointIdentity, header: SessionHeader): boolean {
+  const versionOk = stored.formatVersion === undefined || stored.formatVersion <= header.version
+  return versionOk
+    && stored.createdAt === header.createdAt
+    && stored.cwd === header.cwd
+    && (stored.isSeeded ?? false) === header.isSeeded
+}
+
 async function readRoots(context: LegacyDshContext): Promise<{
   readonly legacyRoot: string
   readonly targetRoot: string
@@ -306,6 +377,25 @@ export async function inspectLegacyDsh(
   for (const session of sessions) {
     const existingLogs = await listSessionLogFiles(session.targetDir, signal)
     if (existingLogs.length === 0) newSessionCount++
+  }
+  if (sessions.length > 0 && newSessionCount === 0) {
+    const persistence = context.ctx.get('sessionPersistence')
+    const projectionCache = context.ctx.get('sessionProjectionCache')
+    if (persistence !== undefined && projectionCache !== undefined) {
+      const persisted = await persistence.list(signal === undefined ? {} : { signal })
+      let uncachedColdCount = 0
+      for (const record of persisted) {
+        signal?.throwIfAborted()
+        if (record.header.origin === 'subagent' || record.header.cwd === undefined) continue
+        if (
+          projectionCache.cachedSnapshot(record.header) === undefined
+          && projectionCache.cachedPredecessorTitle(record.header) === undefined
+        ) {
+          uncachedColdCount++
+        }
+      }
+      newSessionCount = Math.min(sessions.length, uncachedColdCount)
+    }
   }
 
   const [hasAttachments, hasSkills, hasAgentsMd, refs] = await Promise.all([
@@ -362,7 +452,6 @@ export async function importLegacyDsh(
   const sessions = await scanLegacySessions(legacyRoot, targetRoot, signal)
   let importedSessions = 0
   let skippedSessions = 0
-  const newlyImportedDirs = new Set<string>()
   for (const session of sessions) {
     signal?.throwIfAborted()
     const existingLogs = await listSessionLogFiles(session.targetDir, signal)
@@ -378,17 +467,10 @@ export async function importLegacyDsh(
     }
     if (copiedAny) {
       importedSessions++
-      newlyImportedDirs.add(session.sessionDir)
     } else {
       skippedSessions++
     }
   }
-
-  await copyMissingTree(
-    join(legacyRoot, 'storages', 'session_projcache', 'sessions'),
-    join(targetRoot, 'storages', 'session_projcache', 'sessions'),
-    signal,
-  )
 
   const importedAttachments = await copyMissingTree(
     join(legacyRoot, 'attachments'),
@@ -428,63 +510,121 @@ export async function importLegacyDsh(
   let attachedWorkspaces = 0
   const persistence = context.ctx.get('sessionPersistence')
   const workspaceRegistry = context.ctx.get('workspaceRegistry')
-  if (persistence !== undefined && workspaceRegistry !== undefined) {
-    const legacyTitles = await readLegacyWorkspaceTitles(legacyRoot)
+  if (persistence !== undefined) {
     const records = [...await persistence.list(signal === undefined ? {} : { signal })]
-    records.sort((left, right) => left.header.createdAt - right.header.createdAt)
-    const touchedWorkspaces = new Set<string>()
-    const directoryExistsCache = new Map<string, boolean>()
+    if (workspaceRegistry !== undefined) {
+      const legacyTitles = await readLegacyWorkspaceTitles(legacyRoot)
+      records.sort((left, right) => left.header.createdAt - right.header.createdAt)
+      const touchedWorkspaces = new Set<string>()
+      const directoryExistsCache = new Map<string, boolean>()
 
-    for (const record of records) {
-      signal?.throwIfAborted()
-      const cwd = record.header.cwd
-      if (record.header.origin === 'subagent' || typeof cwd !== 'string' || cwd.length === 0) continue
-      let exists = directoryExistsCache.get(cwd)
-      if (exists === undefined) {
-        exists = await isDirectory(cwd)
-        directoryExistsCache.set(cwd, exists)
-      }
-      if (!exists) continue
-      try {
-        const workspace = await workspaceRegistry.create(cwd, legacyTitles.get(cwd))
-        const alreadyAttached = workspace.sessionIds.includes(record.header.id)
-        if (!alreadyAttached) {
-          await workspace.attachSession(record.header.id)
-          if (!touchedWorkspaces.has(workspace.id)) {
-            touchedWorkspaces.add(workspace.id)
-            attachedWorkspaces++
-          }
+      for (const record of records) {
+        signal?.throwIfAborted()
+        const cwd = record.header.cwd
+        if (record.header.origin === 'subagent' || typeof cwd !== 'string' || cwd.length === 0) continue
+        let exists = directoryExistsCache.get(cwd)
+        if (exists === undefined) {
+          exists = await isDirectory(cwd)
+          directoryExistsCache.set(cwd, exists)
         }
-      } catch (error) {
-        context.ctx.get('logger')?.warn(
-          'legacy-dsh: failed to attach session %s to workspace %s: %s',
-          record.header.id,
-          cwd,
-          String(error),
-        )
+        if (!exists) continue
+        try {
+          const workspace = await workspaceRegistry.create(cwd, legacyTitles.get(cwd))
+          const alreadyAttached = workspace.sessionIds.includes(record.header.id)
+          if (!alreadyAttached) {
+            await workspace.attachSession(record.header.id)
+            if (!touchedWorkspaces.has(workspace.id)) {
+              touchedWorkspaces.add(workspace.id)
+              attachedWorkspaces++
+            }
+          }
+        } catch (error) {
+          context.ctx.get('logger')?.warn(
+            'legacy-dsh: failed to attach session %s to workspace %s: %s',
+            record.header.id,
+            cwd,
+            String(error),
+          )
+        }
       }
     }
 
     const projectionCache = context.ctx.get('sessionProjectionCache')
-    const sessionQuery = context.ctx.get('sessionQuery')
-    if (projectionCache !== undefined && sessionQuery !== undefined && (importedSessions > 0 || newlyImportedDirs.size > 0)) {
+    if (projectionCache !== undefined) {
+      const cacheTable = context.ctx.get('storageDomain')
+        ?.get(projectionCacheDomainSpec.name)
+        ?.table('sessions')
+      let wholeUnitPromise: Promise<ReadonlyMap<string, unknown>> | undefined
+      const getWholeUnit = (): Promise<ReadonlyMap<string, unknown>> => {
+        wholeUnitPromise ??= loadLegacyWholeUnitProjcache(legacyRoot)
+        return wholeUnitPromise
+      }
+      const byNewest = [...records].sort((left, right) => right.header.createdAt - left.header.createdAt)
       let warmed = 0
-      for (const record of records) {
+      for (const record of byNewest) {
         signal?.throwIfAborted()
-        if (warmed >= MAX_PROJECTION_WARM_SESSIONS) break
         if (record.header.origin === 'subagent' || record.header.cwd === undefined) continue
-        if (projectionCache.cachedSnapshot(record.header) !== undefined) continue
+        if (
+          projectionCache.cachedSnapshot(record.header) !== undefined
+          || projectionCache.cachedPredecessorTitle(record.header) !== undefined
+        ) {
+          continue
+        }
+
+        if (cacheTable !== undefined && SAFE_CACHE_KEY_RE.test(record.header.id)) {
+          const legacyRecord = await readLegacyProjcacheRecord(legacyRoot, record.header.id, getWholeUnit)
+          if (legacyRecord !== undefined && legacyCheckpointMatchesHeader(legacyRecord.identity, record.header)) {
+            try {
+              await cacheTable.put(record.header.id, legacyRecord)
+            } catch (error) {
+              context.ctx.get('logger')?.warn(
+                'legacy-dsh: failed to seed projection cache for session %s: %s',
+                record.header.id,
+                String(error),
+              )
+            }
+            if (
+              projectionCache.cachedSnapshot(record.header) !== undefined
+              || projectionCache.cachedPredecessorTitle(record.header) !== undefined
+            ) {
+              continue
+            }
+          }
+        }
+
+        if (
+          record.formatStatus === 'migration-required'
+          || warmed >= MAX_PROJECTION_WARM_SESSIONS
+          || typeof persistence.open !== 'function'
+        ) {
+          continue
+        }
         try {
-          using _observation = await sessionQuery.observeSession(record.header.id, {
-            ...(signal === undefined ? {} : { signal }),
-            projectionMode: 'all',
-          })
+          const openOptions = signal === undefined ? undefined : { signal }
+          const handle = await persistence.open(record.header.id, 'read', openOptions)
+          let read
+          try {
+            read = await handle.read(0, undefined, openOptions)
+          } finally {
+            await handle.close()
+          }
+          projectionCache.coldSnapshot(handle.header, handle.inheritedEventCount, read.events)
           warmed++
           if (warmed % PROJECTION_WARM_YIELD_INTERVAL === 0) await scheduler.yield()
         } catch (error) {
           context.ctx.get('logger')?.warn(
             'legacy-dsh: cold projection warm-up failed for session %s: %s',
             record.header.id,
+            String(error),
+          )
+        }
+      }
+      if (warmed > 0 && cacheTable !== undefined) {
+        try {
+          await cacheTable.delete('__legacy_dsh_drain_barrier__')
+        } catch (error) {
+          context.ctx.get('logger')?.warn(
+            'legacy-dsh: projection cache drain barrier failed: %s',
             String(error),
           )
         }

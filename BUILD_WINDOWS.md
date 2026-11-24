@@ -2,7 +2,7 @@
 
 2026-11-24 · Carbon 整理
 
-> 本指南单独存放于 `BUILD_WINDOWS.md`，不改动上游 `README.md`、`README.zh.md` 或 `.i18n.yaml`，以免后续同步官方更新时产生文档与翻译配对冲突。
+> 项目总览与快速开始见 [README.zh.md](README.zh.md) / [README.md](README.md)；本文件聚焦 Windows 桌面端可复现打包、本地开发与上游同步细则。
 
 ## 1. 环境要求（与官方 Release 构建一致）
 
@@ -77,5 +77,6 @@ git merge dsh-v<目标版本号>
 
 ## 5. 变更记录
 
+- 2026-11-24，Carbon：修复 `~/.dsh` 迁移后冷会话标题缓存未写入运行态 `storageDomain` 的问题，并重写仓库根 `README.md` / `README.zh.md` 为 Ciallo App 说明。
 - 2026-11-24，Carbon：更新 v0.2 默认 `~/.ciallo` 数据根目录、Electron `%APPDATA%\Ciallo` 隔离、`Ciallo.exe` 独立身份及一键 `~/.dsh` 迁移说明。
 - 2026-11-24，Carbon：面向公开仓库整理 Windows 桌面端可复现构建、本地调试与上游同步指南。

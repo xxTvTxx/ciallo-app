@@ -7,6 +7,32 @@ import { describe, expect, it, onTestFinished, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { credentialRef, type CredentialInfo } from '@deepseek-ai/dsh-credentials'
 import { remoteErrorOf } from '@deepseek-ai/dsh-typert-protocol'
+import {
+  SESSION_FORMAT_VERSION,
+  SessionId,
+  SessionSeq,
+  type SessionEvent,
+  type SessionHeader,
+} from '@deepseek-ai/dsh-session'
+import SessionStore from '@deepseek-ai/dsh-session'
+import * as JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
+import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
+import SessionProjectionCache, { projectionCacheDomainSpec } from '@deepseek-ai/dsh-session-projection-cache'
+import { titleProjectionDefinition } from '@deepseek-ai/dsh-session-title'
+import { sessionListMetadataDefinition } from '@deepseek-ai/dsh-session-query/src/list-metadata.ts'
+import Storage from '@deepseek-ai/dsh-storage'
+import {
+  apply as storageDomainApply,
+  Config as storageDomainConfig,
+  inject as storageDomainInject,
+  name as storageDomainName,
+} from '@deepseek-ai/dsh-storage-domain'
+import {
+  apply as storageJsonApply,
+  Config as storageJsonConfig,
+  inject as storageJsonInject,
+  name as storageJsonName,
+} from '@deepseek-ai/dsh-storage-json'
 import SettingsController from '../src/index.ts'
 
 async function makeTempDir(prefix: string): Promise<string> {
@@ -180,5 +206,164 @@ describe('legacy ~/.dsh inspection and migration', () => {
     const controller = new SettingsController(ctx)
     const failure = await controller.inspectLegacyDsh(new AbortController().signal).catch((error: unknown) => error)
     expect(remoteErrorOf(failure)?.code).toBe('settings/rejected')
+  })
+
+  it('hydrates open SessionProjectionCache in memory via storageDomain and coldSnapshot without restart', async () => {
+    const legacyRoot = await makeTempDir('dsh-legacy-projcache-src-')
+    const targetRoot = await makeTempDir('dsh-target-projcache-dst-')
+    const workspaceDir = await makeTempDir('dsh-workspace-projcache-')
+
+    const idA = SessionId('legacy-cached-a')
+    const idB = SessionId('legacy-cold-b')
+    const idC = SessionId('legacy-heal-c')
+    const headerA: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: idA,
+      createdAt: 1_700_000_000_000,
+      cwd: workspaceDir,
+      isSeeded: false,
+    }
+    const headerB: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: idB,
+      createdAt: 1_700_000_000_100,
+      cwd: workspaceDir,
+      isSeeded: false,
+    }
+    const headerC: SessionHeader = {
+      version: SESSION_FORMAT_VERSION,
+      id: idC,
+      createdAt: 1_700_000_000_200,
+      cwd: workspaceDir,
+      isSeeded: false,
+    }
+
+    const makeEvents = (title: string): SessionEvent[] => [
+      { type: 'turn/start', seq: SessionSeq(0), time: 1_700_000_001_000, data: { turn: 1 } },
+      {
+        type: 'session/title',
+        seq: SessionSeq(1),
+        time: 1_700_000_001_010,
+        data: { title, messageSeqs: [], source: { kind: 'user' } },
+      },
+      { type: 'turn/end', seq: SessionSeq(2), time: 1_700_000_001_020, data: { turn: 1, reason: { kind: 'completed' } } },
+    ]
+
+    // Seed legacy JSONL logs via JsonlSessionPersistence, then dispose cleanly.
+    const legacySeedCtx = new Context()
+    await legacySeedCtx.plugin(JsonlSessionPersistence, {
+      root: join(legacyRoot, 'sessions'),
+      compression: 'none',
+    })
+    for (const [header, title] of [
+      [headerA, 'Cached Legacy Title'],
+      [headerB, 'Cold Folded Title'],
+      [headerC, 'Repaired Cold Title'],
+    ] as const) {
+      const handle = await legacySeedCtx.sessionPersistence.create(header)
+      try {
+        await handle.append(makeEvents(title))
+        await handle.flush()
+      } finally {
+        await handle.close()
+      }
+    }
+    await legacySeedCtx.fiber.dispose()
+
+    // Session A has a persisted per-record projection cache entry in ~/.dsh;
+    // Session B has no cache entry at all; Session C will simulate raw-copied log without cache.
+    await mkdir(join(legacyRoot, 'storages', 'session_projcache', 'sessions'), { recursive: true })
+    await writeFile(
+      join(legacyRoot, 'storages', 'session_projcache', 'sessions', `${idA}.json`),
+      JSON.stringify({
+        version: projectionCacheDomainSpec.version,
+        record: {
+          identity: {
+            formatVersion: SESSION_FORMAT_VERSION,
+            createdAt: headerA.createdAt,
+            cwd: workspaceDir,
+            isSeeded: false,
+            inheritedEventCount: 0,
+          },
+          rows: {
+            title: { ver: 1, seq: 1, val: 'Cached Legacy Title' },
+            sessionListMetadata: { ver: 1, seq: 0, val: { blank: false, lastPromptAt: 1_700_000_000_050 } },
+          },
+        },
+      }),
+      'utf8',
+    )
+
+    // Pre-copy Session C's log directory (without any projcache entry) to verify self-healing inspection & repair later.
+    await mkdir(join(targetRoot, 'sessions'), { recursive: true })
+
+    // Boot target Host storage + projection cache BEFORE importing (matching live web/desktop runtime).
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    await ctx.plugin(Storage)
+    await ctx.plugin(
+      { name: storageJsonName, inject: storageJsonInject, apply: storageJsonApply, Config: storageJsonConfig },
+      { root: join(targetRoot, 'storages') },
+    )
+    await ctx.plugin(
+      { name: storageDomainName, inject: storageDomainInject, apply: storageDomainApply, Config: storageDomainConfig },
+      { backend: 'json' },
+    )
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionProjectionRegistry)
+    await ctx.sessionProjections.register(titleProjectionDefinition)
+    await ctx.sessionProjections.register(sessionListMetadataDefinition)
+    await ctx.plugin(SessionProjectionCache, { writeEveryEvents: 100, writeIntervalMs: 60_000 })
+    await ctx.plugin(JsonlSessionPersistence, {
+      root: join(targetRoot, 'sessions'),
+      compression: 'none',
+    })
+
+    const controller = new SettingsController(ctx, {
+      legacyHome: () => legacyRoot,
+      targetHome: () => targetRoot,
+    })
+
+    const before = await controller.inspectLegacyDsh(new AbortController().signal)
+    expect(before.available).toBe(true)
+    expect(before.sessionCount).toBe(3)
+    expect(before.newSessionCount).toBe(3)
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerA)).toBeUndefined()
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerB)).toBeUndefined()
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerC)).toBeUndefined()
+
+    const outcome = await controller.importLegacyDsh({ includeCredentials: false }, new AbortController().signal)
+    expect(outcome.importedSessions).toBe(3)
+    expect(outcome.skippedSessions).toBe(0)
+
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerA)?.values).toEqual({
+      title: 'Cached Legacy Title',
+      sessionListMetadata: { blank: false, lastPromptAt: 1_700_000_000_050 },
+    })
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerB)?.values).toEqual({
+      title: 'Cold Folded Title',
+      sessionListMetadata: { blank: false, lastPromptAt: null },
+    })
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerC)?.values).toEqual({
+      title: 'Repaired Cold Title',
+      sessionListMetadata: { blank: false, lastPromptAt: null },
+    })
+
+    const after = await controller.inspectLegacyDsh(new AbortController().signal)
+    expect(after.newSessionCount).toBe(0)
+
+    // Remove Session C's on-disk + in-memory cache row via storageDomain to simulate a prior raw copy lacking cache.
+    await ctx.storageDomain.get(projectionCacheDomainSpec.name)?.table('sessions').delete(idC)
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerC)).toBeUndefined()
+
+    const needsHeal = await controller.inspectLegacyDsh(new AbortController().signal)
+    expect(needsHeal.newSessionCount).toBe(1)
+
+    await controller.importLegacyDsh({ includeCredentials: false }, new AbortController().signal)
+    expect(ctx.sessionProjectionCache.cachedSnapshot(headerC)?.values).toEqual({
+      title: 'Repaired Cold Title',
+      sessionListMetadata: { blank: false, lastPromptAt: null },
+    })
+    expect((await controller.inspectLegacyDsh(new AbortController().signal)).newSessionCount).toBe(0)
   })
 })
