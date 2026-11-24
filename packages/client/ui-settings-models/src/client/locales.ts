@@ -222,6 +222,7 @@ export const en = {
   legacyDshImportAction: 'Import with one click',
   legacyDshImporting: 'Importing…',
   legacyDshImported: 'Imported {sessions} sessions ({skipped} skipped), {providers} model providers, {credentials} keys. Original ~/.dsh stays untouched.',
+  legacyDshOneWayHint: 'One-way copy only: original ~/.dsh is untouched, and later session changes do not sync in real time.',
 }
 
 /** The settings.models namespace key union. */
@@ -449,6 +450,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   legacyDshImportAction: '一键导入',
   legacyDshImporting: '导入中…',
   legacyDshImported: '已导入 {sessions} 个会话（跳过 {skipped} 个）、{providers} 个模型提供商、{credentials} 项密钥，原 ~/.dsh 目录保持不变。',
+  legacyDshOneWayHint: '此导入为单向拷贝，不会修改原 ~/.dsh，后续两端的会话变更也不会实时同步。',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -673,6 +675,7 @@ export const ja = {
   'legacyDshImportAction': 'ワンクリックでインポート',
   'legacyDshImporting': 'インポート中…',
   'legacyDshImported': '{sessions} 件のセッション（{skipped} 件スキップ）、{providers} 件のモデルプロバイダー、{credentials} 件のキーをインポートしました。元の ~/.dsh は変更されません。',
+  'legacyDshOneWayHint': '片方向のコピーのみです。元の ~/.dsh は変更されず、以降のセッション変更もリアルタイム同期されません。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -897,6 +900,7 @@ export const es = {
   legacyDshImportAction: 'Importar en un clic',
   legacyDshImporting: 'Importando…',
   legacyDshImported: 'Se importaron {sessions} sesiones ({skipped} omitidas), {providers} proveedores de modelos y {credentials} claves. ~/.dsh permanece intacto.',
+  legacyDshOneWayHint: 'Copia unidireccional: ~/.dsh no se modifica y los cambios posteriores no se sincronizan en tiempo real.',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -1121,6 +1125,7 @@ export const fr = {
   legacyDshImportAction: 'Importer en un clic',
   legacyDshImporting: 'Importation…',
   legacyDshImported: '{sessions} sessions importées ({skipped} ignorées), {providers} fournisseurs de modèles et {credentials} clés. ~/.dsh reste inchangé.',
+  legacyDshOneWayHint: 'Copie unidirectionnelle uniquement : ~/.dsh reste intact et les modifications ultérieures ne sont pas synchronisées en temps réel.',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -1345,6 +1350,7 @@ export const de = {
   legacyDshImportAction: 'Mit einem Klick importieren',
   legacyDshImporting: 'Wird importiert…',
   legacyDshImported: '{sessions} Sitzungen importiert ({skipped} übersprungen), {providers} Modellanbieter, {credentials} Schlüssel. ~/.dsh bleibt unverändert.',
+  legacyDshOneWayHint: 'Nur Einweg-Kopie: ~/.dsh bleibt unverändert und spätere Änderungen werden nicht in Echtzeit synchronisiert.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -1569,6 +1575,7 @@ export const ru = {
   legacyDshImportAction: 'Импортировать в один клик',
   legacyDshImporting: 'Импорт…',
   legacyDshImported: 'Импортировано сессий: {sessions} (пропущено: {skipped}), провайдеров моделей: {providers}, ключей: {credentials}. Исходная папка ~/.dsh не изменена.',
+  legacyDshOneWayHint: 'Одностороннее копирование: ~/.dsh не изменяется, а дальнейшие изменения сессий не синхронизируются в реальном времени.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1793,4 +1800,5 @@ export const pt = {
   legacyDshImportAction: 'Importar com um clique',
   legacyDshImporting: 'Importando…',
   legacyDshImported: 'Importadas {sessions} sessões ({skipped} ignoradas), {providers} provedores de modelos e {credentials} chaves. A pasta ~/.dsh permanece intacta.',
+  legacyDshOneWayHint: 'Cópia apenas unidirecional: ~/.dsh permanece intacto e alterações posteriores não são sincronizadas em tempo real.',
 } satisfies Record<keyof typeof en, string>

@@ -49,6 +49,13 @@
   color: var(--dsw-alias-label-secondary);
 }
 
+.hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--dsw-alias-label-tertiary);
+}
+
 .success {
   margin: 0;
   font-size: 12px;

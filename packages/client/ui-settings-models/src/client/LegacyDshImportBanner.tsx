@@ -129,6 +129,7 @@ export function LegacyDshImportBanner({
           />
         )
         : null}
+      <p className={styles['hint']}>{t('legacyDshOneWayHint')}</p>
       {result === undefined
         ? null
         : (

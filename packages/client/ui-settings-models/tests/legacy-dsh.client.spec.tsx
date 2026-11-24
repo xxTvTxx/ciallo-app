@@ -137,6 +137,7 @@ describe('LegacyDshImportBanner integration', () => {
     render(<CialloStartDialog {...startProps} />)
 
     expect(await screen.findByText(en.legacyDshTitle)).toBeTruthy()
+    expect(screen.getByText(en.legacyDshOneWayHint)).toBeTruthy()
     const checkbox = screen.getByRole<HTMLInputElement>('checkbox')
     expect(checkbox.checked).toBe(true)
     fireEvent.click(checkbox)
@@ -184,6 +185,7 @@ describe('LegacyDshImportBanner integration', () => {
     render(<ModelsSection {...sectionProps} />)
 
     expect(await screen.findByText(en.legacyDshTitle)).toBeTruthy()
+    expect(screen.getByText(en.legacyDshOneWayHint)).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: en.legacyDshImportAction }))
     expect(await screen.findByText('disk read failed')).toBeTruthy()
   })
