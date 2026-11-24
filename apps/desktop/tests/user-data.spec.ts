@@ -20,6 +20,21 @@ describe('isolateDesktopUserData', () => {
     expect(setPath).toHaveBeenCalledWith('sessionData', expected)
   })
 
+  it('matches package-scoped userData paths with mixed separators such as Windows @deepseek-ai/dsh-desktop', () => {
+    const appData = join('C:', 'Users', 'alice', 'AppData', 'Roaming')
+    const mixedUserData = `${appData}/@deepseek-ai/dsh-desktop`
+    const setPath = vi.fn()
+
+    isolateDesktopUserData({
+      getPath: name => name === 'appData' ? appData : mixedUserData,
+      setPath,
+    }, ['Ciallo.exe'])
+
+    const expected = join(appData, CIALLO_USER_DATA_DIR_NAME)
+    expect(setPath).toHaveBeenCalledWith('userData', expected)
+    expect(setPath).toHaveBeenCalledWith('sessionData', expected)
+  })
+
   it('preserves explicit --user-data-dir arguments and custom test userData paths', () => {
     const appData = join('C:', 'Users', 'alice', 'AppData', 'Roaming')
     const setPath = vi.fn()

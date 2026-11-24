@@ -1,6 +1,6 @@
 /** Electron userData path isolation from official DeepSeek Harness installations. */
 
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 
 /** Minimal Electron application paths API needed for userData isolation. */
 export interface DesktopUserDataApplication {
@@ -13,6 +13,14 @@ const SHARED_PACKAGE_USER_DATA = join('@deepseek-ai', 'dsh-desktop')
 
 /** Isolated directory name under Electron `appData` for Ciallo Desktop. */
 export const CIALLO_USER_DATA_DIR_NAME = 'Ciallo'
+
+function sameFilesystemPath(left: string, right: string): boolean {
+  const normalizedLeft = resolve(left)
+  const normalizedRight = resolve(right)
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight
+}
 
 /**
  * Redirect Electron's package-scoped default `userData` (`<appData>/@deepseek-ai/dsh-desktop`)
@@ -30,7 +38,7 @@ export function isolateDesktopUserData(
   if (argv.some(arg => arg === '--user-data-dir' || arg.startsWith('--user-data-dir='))) return
   const appData = electronApp.getPath('appData')
   if (typeof appData !== 'string' || appData.length === 0) return
-  if (electronApp.getPath('userData') !== join(appData, SHARED_PACKAGE_USER_DATA)) return
+  if (!sameFilesystemPath(electronApp.getPath('userData'), join(appData, SHARED_PACKAGE_USER_DATA))) return
   const isolated = join(appData, CIALLO_USER_DATA_DIR_NAME)
   electronApp.setPath('userData', isolated)
   electronApp.setPath('sessionData', isolated)

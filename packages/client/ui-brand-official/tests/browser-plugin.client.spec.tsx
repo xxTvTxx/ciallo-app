@@ -55,7 +55,7 @@ describe('official browser-brand plugin', () => {
     expect(subject.slots.entries('sidebar.brand.mark').map(entry => entry.component)).toEqual([PlaceholderMark])
     expect(subject.slots.entries(HERO_HOLE).map(entry => entry.component)).toEqual([PlaceholderMark])
     expect(subject.slots.entries('sidebar.brand.name')).toHaveLength(0)
-    expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(1)
+    expect(subject.slots.entries('conversation.hero.frame')).toHaveLength(0)
     await fiber.dispose()
     expect(subject.slots.entries('sidebar.brand.mark')).toHaveLength(0)
     expect(subject.slots.entries(HERO_HOLE)).toHaveLength(0)

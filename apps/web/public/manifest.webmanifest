@@ -1,6 +1,6 @@
 {
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "Ciallo",
+  "short_name": "Ciallo",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

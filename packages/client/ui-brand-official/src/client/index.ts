@@ -15,16 +15,16 @@ export const inject = ['slots']
  * @param ctx - Client root context.
  */
 export function apply(ctx: ClientContext): void {
-  ctx.slots.inject('conversation.hero.frame', () => ctx.slots.register({
-    name: 'conversation.hero.frame',
-    id: 'pixel-whale',
-  }, PixelWhale))
   if (process.env.DSH_CLIENT_BUILD_PROFILE !== 'official') {
     ctx.slots.inject('sidebar.brand.mark', () => ctx.slots.register({ name: 'sidebar.brand.mark' }, PlaceholderMark))
     ctx.slots.inject('conversation.hero.brand.mark', () =>
       ctx.slots.register({ name: 'conversation.hero.brand.mark' }, PlaceholderMark))
     return
   }
+  ctx.slots.inject('conversation.hero.frame', () => ctx.slots.register({
+    name: 'conversation.hero.frame',
+    id: 'pixel-whale',
+  }, PixelWhale))
   ctx.slots.inject('sidebar.brand.mark', () =>
     ctx.slots.inject('sidebar.brand.name', function* () {
       yield ctx.slots.register({ name: 'sidebar.brand.mark' }, OfficialBrandMark)
