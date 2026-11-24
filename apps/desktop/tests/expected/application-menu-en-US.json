@@ -1,6 +1,6 @@
 [
   {
-    "label": "About DeepSeek Harness",
+    "label": "About Ciallo",
     "role": "about"
   },
   {
@@ -32,7 +32,7 @@
   },
   {
     "role": "hide",
-    "label": "Hide DeepSeek Harness"
+    "label": "Hide Ciallo"
   },
   {
     "role": "hideOthers",
@@ -47,6 +47,6 @@
   },
   {
     "role": "quit",
-    "label": "Quit DeepSeek Harness"
+    "label": "Quit Ciallo"
   }
 ]

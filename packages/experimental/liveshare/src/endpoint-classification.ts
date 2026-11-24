@@ -130,6 +130,8 @@ export const VIEWER_ENDPOINT_CLASSES = {
   'credentials/set': 'owner-only', // owner credentials; secrets never reach a reader
   'credentials/unset': 'owner-only', // owner credentials; secrets never reach a reader
   'settings/describe': 'owner-only', // owner settings
+  'settings/importLegacyDsh': 'owner-only', // owner local harness migration
+  'settings/inspectLegacyDsh': 'owner-only', // owner local harness migration
   'settings/mutate': 'owner-only', // owner settings
   'settings/openSettingsDocument': 'owner-only', // owner settings
   'settings/replace': 'owner-only', // owner settings

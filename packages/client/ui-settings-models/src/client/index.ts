@@ -84,10 +84,9 @@ export const inject = [
  * @param config - Host-synced credential-onboarding choice, followed live until the CialloAPI step mounts.
  */
 export function apply(ctx: ClientContext, config: SyncedConfig<ModelsConfig>): void {
-  const nativeShell = 'dshDesktop' in globalThis
-  // Whether the CialloAPI step opens on its own; the native shell owns its own onboarding.
+  // Open the CialloAPI first-run step in both Web and Desktop when no provider is configured.
   const automatic: ObservableSnapshot<boolean> = {
-    getSnapshot: () => !nativeShell && (config.credentialOnboarding.get() ?? ABSENT_CREDENTIAL_ONBOARDING),
+    getSnapshot: () => config.credentialOnboarding.get() ?? ABSENT_CREDENTIAL_ONBOARDING,
     subscribe: listener => config.credentialOnboarding.subscribe(listener),
   }
   ctx.effect(() => ctx.locale.register(NS, { zh, en, ja, es, fr, de, ru, pt }), 'ui-settings-models: copy dictionaries')

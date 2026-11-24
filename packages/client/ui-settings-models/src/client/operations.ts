@@ -6,7 +6,9 @@
  */
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
+import type {} from '@deepseek-ai/dsh-api-session-controller/client'
 import type {
+  LegacyDshImportOptions, LegacyDshImportResult, LegacyDshSummary,
   LlmDiscoveredModel, LlmModelDiscoveryRequest,
   SettingsNamespaceView, SettingsPathOpView,
 } from '@deepseek-ai/dsh-api-remotes/client'
@@ -28,6 +30,11 @@ export type ModelDiscoveryOutcome =
   /** The candidates the provider disclosed, in its own order. */
   | { readonly kind: 'found'; readonly models: readonly LlmDiscoveredModel[] }
   /** The interrogation was refused, with the Host's own diagnostic. */
+  | { readonly kind: 'refused'; readonly message: string }
+
+/** Outcome of invoking one-click legacy `~/.dsh` migration. */
+export type LegacyDshImportOutcome =
+  | { readonly kind: 'imported'; readonly result: LegacyDshImportResult }
   | { readonly kind: 'refused'; readonly message: string }
 
 /** The Host operations the Models page and its cards invoke. */
@@ -76,6 +83,18 @@ export interface ModelsOperations {
    * @returns the refusal message, or undefined once stored.
    */
   saveDefaultModel(selection: DefaultModelSelection): Promise<string | undefined>
+  /**
+   * Inspect whether a legacy `~/.dsh` home directory exists with migratable data.
+   * @returns redacted counts and flags, or undefined when inspection fails.
+   */
+  inspectLegacyDsh?(): Promise<LegacyDshSummary | undefined>
+  /**
+   * Idempotently copy sessions, skills, attachments, `AGENTS.md`, and optionally
+   * stored API keys from `~/.dsh` into the active home, then refresh live sessions.
+   * @param options - Migration options.
+   * @returns imported counts or the Host's refusal message.
+   */
+  importLegacyDsh?(options?: LegacyDshImportOptions): Promise<LegacyDshImportOutcome>
 }
 
 /** The default-model settings section the Host's default-model plugin reads. */
@@ -134,6 +153,18 @@ export function createModelsOperations(ctx: ClientContext): ModelsOperations {
           : { op: 'set', path: ['reasoningEffort'], value: selection.reasoningEffort },
       ], undefined)
       return response.ok ? undefined : response.error.message
+    },
+    inspectLegacyDsh: async () => {
+      const response = await ctx.remote.settings.inspectLegacyDsh()
+      return response.ok ? response.value : undefined
+    },
+    importLegacyDsh: async (options) => {
+      const response = await ctx.remote.settings.importLegacyDsh(options)
+      if (!response.ok) return { kind: 'refused', message: response.error.message }
+      await ctx.get('sessions')?.refresh().catch(() => {
+        // Live session list refresh failure should not hide a committed disk import.
+      })
+      return { kind: 'imported', result: response.value }
     },
   }
 }

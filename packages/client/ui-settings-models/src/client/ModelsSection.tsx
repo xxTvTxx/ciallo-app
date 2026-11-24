@@ -31,6 +31,7 @@ import { CustomProviderCard } from './CustomProviderCard.tsx'
 import { cialloApiProtocols } from './ciallo-api.ts'
 import { isCialloRoute } from './ciallo-groups.ts'
 import { CialloApiCard } from './CialloApiCard.tsx'
+import { LegacyDshImportBanner } from './LegacyDshImportBanner.tsx'
 import { deriveKeyRef, protocolChoices, reasoningLevelChoices } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
@@ -424,6 +425,7 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             {providerCopy(t('savedProvider'), savedIdentity)}
           </p>
         )}
+      <LegacyDshImportBanner operations={operations} controller={controller} t={t} onlyWithNewSessions />
       {piAi !== undefined && cialloProtocols.length > 0
         ? (
           <CialloApiCard

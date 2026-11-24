@@ -6,7 +6,7 @@
 
 namespace uninstall_report {
 struct Session {
-    std::wstring text = L"DeepSeek Harness uninstall report\r\n";
+    std::wstring text = L"Ciallo uninstall report\r\n";
     std::wstring path;
     bool issues = false;
     bool mainBlocked = false;

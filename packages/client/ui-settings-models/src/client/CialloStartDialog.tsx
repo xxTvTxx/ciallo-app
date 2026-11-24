@@ -26,6 +26,7 @@ import { useCialloDiscovery } from './useCialloDiscovery.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
 import type { en } from './locales.ts'
+import { LegacyDshImportBanner } from './LegacyDshImportBanner.tsx'
 import { OnboardingModal } from './OnboardingModal.tsx'
 import css from './CialloStartDialog.module.css'
 
@@ -96,6 +97,8 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
   const [resume, setResume] = useState<CialloCreateResume | undefined>(undefined)
   /** The group exists but its default-model write failed; the step only closes now. */
   const [created, setCreated] = useState(false)
+  /** Keep the dialog open to display migration results even if imported keys made a provider usable. */
+  const [importedLegacy, setImportedLegacy] = useState(false)
   /** Fixed when the step first offers, so a refresh cannot move the new group to another id. */
   const [route, setRoute] = useState<string | undefined>(undefined)
   const shown = automatic || explicit
@@ -105,28 +108,30 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
   }, [controller, state.status, shown])
 
   useEffect(() => {
-    if (!shown || readiness.kind === 'skip') complete()
-  }, [complete, readiness.kind, shown])
+    if (!shown || (readiness.kind === 'skip' && !importedLegacy)) complete()
+  }, [complete, importedLegacy, readiness.kind, shown])
 
-  if (!shown || readiness.kind !== 'offer') return null
-  const target = route ?? nextCialloRoute(readiness.taken)
+  if (!shown || (readiness.kind !== 'offer' && !importedLegacy)) return null
+  const offered = readiness.kind === 'offer' ? readiness : undefined
+  const target = route ?? (offered === undefined ? '' : nextCialloRoute(offered.taken))
 
   const detection = discovery.state
   const models = detection.kind === 'found' ? detection.models : []
   const ids = models.map(model => model.id)
   const kind = classifyCialloModels(ids)
   const kindName = t(CIALLO_KIND_KEYS[kind])
-  const api = cialloKindProtocol(kind, readiness.protocols)
+  const api = offered === undefined ? '' : cialloKindProtocol(kind, offered.protocols)
   const preferred = cialloPreferredModel(kind, ids)
   const keyValue = keyDraft.trim()
   const keyFailure = apiKeyFailure(keyDraft)
 
   const changeKey = (value: string): void => {
+    if (offered === undefined) return
     setRoute(target)
     setKeyDraft(value)
     setFailure(undefined)
     const key = value.trim()
-    const probeApi = cialloKindProtocol('mixed', readiness.protocols)
+    const probeApi = cialloKindProtocol('mixed', offered.protocols)
     discovery.schedule(key.length === 0 || apiKeyFailure(value) !== undefined ? undefined : {
       provider: target,
       /* v8 ignore next -- the default origin resolves for every gateway protocol */
@@ -137,6 +142,7 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
   }
 
   const start = async (): Promise<void> => {
+    if (offered === undefined) return
     setBusy(true)
     setFailure(undefined)
     try {
@@ -158,7 +164,7 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
         }, undefined),
         keyRef,
         key: keyValue,
-        revision: readiness.revision,
+        revision: offered.revision,
         /* v8 ignore next -- the start action requires a non-empty listing, so a default is always proposed */
         ...preferred === '' ? {} : { defaultModel: {
           provider: target, model: preferred, ...typeof effort === 'string' ? { reasoningEffort: effort } : {},
@@ -212,38 +218,56 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
   return (
     <OnboardingModal title={t('startTitle')}>
       <p className={css.description}>{t('startDescription')}</p>
-      <label className={css.field}>
-        <span className={css.label}>{t('keyInput')}</span>
-        <ApiKeyInput
-          t={t}
-          value={keyDraft}
-          placeholder={t('keyPlaceholder')}
-          aria-label={t('keyInput')}
-          autoFocus
-          required
-          disabled={busy || created || resume !== undefined}
-          onChange={(event) => { changeKey(event.target.value) }}
-        />
-      </label>
-      <div className={css.field}>{status}</div>
-      {failure === undefined ? null : <p className={css.error} role="alert">{failure}</p>}
-      <div className={css.actions}>
-        <Button variant="ghost" disabled={busy} onClick={complete}>
-          {t(created ? 'close' : 'startLater')}
-        </Button>
-        {created
-          ? <Button variant="primary" className={css.primary} onClick={complete}>{t('startContinue')}</Button>
-          : (
-            <Button
-              variant="primary"
-              className={css.primary}
-              disabled={busy || detection.kind !== 'found' || keyFailure !== undefined}
-              onClick={() => { void start() }}
-            >
-              {t(busy ? 'startSubmitting' : 'startSubmit')}
-            </Button>
-          )}
-      </div>
+      <LegacyDshImportBanner
+        operations={operations}
+        controller={controller}
+        t={t}
+        compact
+        onImported={() => { setImportedLegacy(true) }}
+      />
+      {offered === undefined
+        ? (
+          <div className={css.actions}>
+            <span />
+            <Button variant="primary" className={css.primary} onClick={complete}>{t('startContinue')}</Button>
+          </div>
+        )
+        : (
+          <>
+            <label className={css.field}>
+              <span className={css.label}>{t('keyInput')}</span>
+              <ApiKeyInput
+                t={t}
+                value={keyDraft}
+                placeholder={t('keyPlaceholder')}
+                aria-label={t('keyInput')}
+                autoFocus
+                required
+                disabled={busy || created || resume !== undefined}
+                onChange={(event) => { changeKey(event.target.value) }}
+              />
+            </label>
+            <div className={css.field}>{status}</div>
+            {failure === undefined ? null : <p className={css.error} role="alert">{failure}</p>}
+            <div className={css.actions}>
+              <Button variant="ghost" disabled={busy} onClick={complete}>
+                {t(created ? 'close' : 'startLater')}
+              </Button>
+              {created
+                ? <Button variant="primary" className={css.primary} onClick={complete}>{t('startContinue')}</Button>
+                : (
+                  <Button
+                    variant="primary"
+                    className={css.primary}
+                    disabled={busy || detection.kind !== 'found' || keyFailure !== undefined}
+                    onClick={() => { void start() }}
+                  >
+                    {t(busy ? 'startSubmitting' : 'startSubmit')}
+                  </Button>
+                )}
+            </div>
+          </>
+        )}
     </OnboardingModal>
   )
 }

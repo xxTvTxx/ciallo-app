@@ -137,7 +137,7 @@ int wmain(int argc, wchar_t** argv) {
     assert(DeleteFileW(report.c_str()));
     assert(RemoveDirectoryW(installation.c_str()));
 
-    for (auto home : {L"C:/HarnessHome", L"~/.dsh", L"~\\.dsh", L" \t "}) {
+    for (auto home : {L"C:/HarnessHome", L"~/.ciallo", L"~\\.ciallo", L" \t "}) {
         assert(CreateDirectoryW(installation.c_str(), nullptr));
         void* alternate = UninstallBegin(report.c_str());
         assert(alternate);

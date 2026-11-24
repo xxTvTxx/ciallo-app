@@ -47,15 +47,12 @@ pnpm run package:desktop:win:x64:unsigned
 
 产物位于 `apps/desktop/.desktop-build/targets/win-x64/unsigned-artifacts/`，打包末尾会自动执行离线运行时与 Office 组件 smoke 验收。
 
-## 3. 本地日常开发与快速预览（不打安装包）
+## 3. 本地日常开发与同机并行（不打安装包）
 
-- **与官方版 DeepSeek Harness 同机并行调试时的目录隔离**：
-
-```powershell
-$env:DSH_HOME = "$HOME\.dsh-ciallo"
-$env:DSH_DESKTOP_USER_DATA_DIR = "$env:APPDATA\ciallo-app-dev"
-```
-
+- **默认数据与安装隔离（v0.2+）**：
+  - **独立数据根目录**：默认使用 `~/.ciallo`（仍可通过 `DSH_HOME` 覆盖），避免与官方版 DeepSeek Harness 的 `~/.dsh` 产生配置与插件清单冲突。
+  - **独立桌面运行时目录**：桌面端使用产品名 `Ciallo`（可安装程序 `Ciallo.exe`、自定义协议 `ciallo://`），并将 Electron `userData` 隔离在 `%APPDATA%\Ciallo`，可与官方版 `DeepSeek Harness.exe` 同机同时安装和并行运行，互不抢占单实例锁。
+  - **一键从 `~/.dsh` 迁移**：首次启动引导弹窗（以及 `设置 → 模型`）会自动检测本机是否存在 `~/.dsh`，提供一键非破坏性导入历史会话、附件、技能、`AGENTS.md` 与已保存 API 密钥（可选），原 `~/.dsh` 目录保持只读且不被修改。
 - **Web 预览**：`pnpm run build:artifacts` 后运行 `pnpm run start:web`（或使用热更新循环 `pnpm run dev:web`）
 - **桌面端开发态**：`pnpm run dev:desktop`
 - **免安装目录版**：`pnpm run package:desktop:win:x64:dir`
@@ -80,4 +77,5 @@ git merge dsh-v<目标版本号>
 
 ## 5. 变更记录
 
+- 2026-11-24，Carbon：更新 v0.2 默认 `~/.ciallo` 数据根目录、Electron `%APPDATA%\Ciallo` 隔离、`Ciallo.exe` 独立身份及一键 `~/.dsh` 迁移说明。
 - 2026-11-24，Carbon：面向公开仓库整理 Windows 桌面端可复现构建、本地调试与上游同步指南。

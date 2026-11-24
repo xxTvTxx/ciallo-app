@@ -167,6 +167,9 @@ export type { CredentialInfo } from '@deepseek-ai/dsh-credentials/types'
 export type {
   SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView, SettingsSecretView,
 } from '@deepseek-ai/dsh-settings/types'
+export type {
+  LegacyDshImportOptions, LegacyDshImportResult, LegacyDshSummary,
+} from '@deepseek-ai/dsh-api-settings-controller/types'
 // Provider registry and discovery vocabulary for the llm namespace.
 export type {
   LlmConfigurableProvider, LlmDiscoveredModel,

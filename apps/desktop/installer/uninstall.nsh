@@ -34,7 +34,7 @@ Function un.BeginCleanup
   InitPluginsDir
   File "/oname=$PLUGINSDIR\window-frame.dll" "${INSTALLER_BUILD_DIR}\window-frame.dll"
   System::Call 'kernel32::GetCurrentProcessId() i.r0'
-  StrCpy $UnReportPath "$TEMP\DeepSeek-Harness-uninstall-$0.txt"
+  StrCpy $UnReportPath "$TEMP\Ciallo-uninstall-$0.txt"
   System::Call '$PLUGINSDIR\window-frame.dll::UninstallBegin(w "$UnReportPath") p.r0 ?c'
   StrCpy $UnSession $0
   ${If} $UnSession == 0
@@ -131,20 +131,16 @@ Function un.CleanData
   ClearErrors
   StrCpy $UnTarget "$APPDATA\${PRODUCT_FILENAME}"
   Call un.RemoveData
-  !ifdef APP_PACKAGE_NAME
-    ; Electron derives user data from the package name; a scoped name nests it one directory deeper.
-    StrCpy $UnTarget "$APPDATA\${APP_PACKAGE_NAME}"
-    Call un.RemoveData
-    System::Call '$PLUGINSDIR\window-frame.dll::UninstallRemoveEmptyParents(w "$UnTarget", w "$APPDATA") ?c'
-  !endif
+  ; Electron userData for Ciallo is isolated under $APPDATA\Ciallo; never remove
+  ; $APPDATA\${APP_PACKAGE_NAME}, which belongs to official DeepSeek Harness.
   StrCpy $UnTarget "$LOCALAPPDATA\${DSH_UPDATER_CACHE_NAME}"
   Call un.RemoveData
 FunctionEnd
 
 ; Upgrade replacement retains integrations; KEEP_APP_DATA controls only user data.
 !define /ifndef DSH_COMMAND_ENVIRONMENT_KEY "Environment"
-!define /ifndef DSH_COMMAND_OWNER_KEY "Software\DeepSeekHarness\Command"
-!define /ifndef DSH_PROTOCOL_KEY "Software\Classes\dsh"
+!define /ifndef DSH_COMMAND_OWNER_KEY "Software\Ciallo\Command"
+!define /ifndef DSH_PROTOCOL_KEY "Software\Classes\ciallo"
 !define /ifndef DSH_COMMAND_MUTEX "default"
 Function un.CleanRegistration
   ${If} ${isUpdated}

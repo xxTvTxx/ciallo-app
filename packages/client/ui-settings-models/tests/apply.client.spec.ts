@@ -119,14 +119,14 @@ describe('ui-settings-models apply', () => {
     }
   })
 
-  it('leaves automatic onboarding to the native shell', async () => {
+  it('enables automatic onboarding in the native shell as well', async () => {
     vi.stubGlobal('dshDesktop', {})
     const { ctx, slots } = await bench()
     declare(slots)
     try {
       await ctx.plugin({ inject: [...inject], apply }, syncedConfig({ credentialOnboarding: true })).await()
       expect(slots.entries('settings.onboarding').map(entry => entry.options.id)).toEqual(['ciallo-start', 'deepseek-official'])
-      expect(automaticSource(slots).getSnapshot()).toBe(false)
+      expect(automaticSource(slots).getSnapshot()).toBe(true)
     } finally {
       await ctx.fiber.dispose()
     }
@@ -161,7 +161,7 @@ describe('ui-settings-models apply', () => {
     expect(onboarding).toHaveLength(2)
     const start = onboarding.find(entry => entry.options.id === 'ciallo-start')!
     expect(start).toMatchObject({ component: CialloStartDialog, options: { id: 'ciallo-start', order: -100 } })
-    const startInjected = (start.inject as unknown as () => CialloStartInjected)()
+    const startInjected = (start.inject!() as object) as CialloStartInjected
     expect(startInjected.hooks.models).toBe(injected.controller.store)
     expect(startInjected.controller).toBe(injected.controller)
     expect(startInjected.t('startTitle')).toBe('开始使用 Ciallo')

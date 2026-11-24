@@ -15,16 +15,23 @@ import type { SettingsDescriptor, SettingsPathOp, SettingsForms } from '@deepsee
 import type {
   SettingsDescribeValue, SettingsNamespaceView, SettingsPathOpView,
 } from '@deepseek-ai/dsh-settings/types'
-import { Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { principalOf, Remote, RemoteError, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { z } from 'zod'
 import { CredentialsController } from './credentials.ts'
-import type { SettingsDocumentOpenValue } from './types.ts'
+import { importLegacyDsh as runImportLegacyDsh, inspectLegacyDsh as runInspectLegacyDsh } from './legacy-dsh.ts'
+import type {
+  LegacyDshImportOptions,
+  LegacyDshImportResult,
+  LegacyDshSummary,
+  SettingsDocumentOpenValue,
+} from './types.ts'
 
 export { CredentialsController } from './credentials.ts'
 export type * from './types.ts'
 
 const settingsNamespaceRequestSchema = z.object({ ns: z.string().min(1) })
+const legacyImportOptionsSchema = z.object({ includeCredentials: z.boolean().optional() })
 
 /** Read abort state afresh after an awaited provider or opener call. */
 function isAborted(signal: AbortSignal): boolean {
@@ -34,7 +41,11 @@ function isAborted(signal: AbortSignal): boolean {
 /** Host integrations replaceable by direct unit tests. */
 export interface SettingsControllerInternals {
   /** Host text-editor integration used to open the settings document. */
-  readonly openTextFile?: (path: string, signal: AbortSignal) => Promise<void>
+  readonly openTextFile?: ((path: string, signal: AbortSignal) => Promise<void>) | undefined
+  /** Legacy DeepSeek Harness home override for testing migration. */
+  readonly legacyHome?: (() => string) | undefined
+  /** Target Ciallo App home override for testing migration. */
+  readonly targetHome?: (() => string) | undefined
 }
 
 /**
@@ -75,16 +86,22 @@ declare module '@deepseek-ai/cordis' {
  */
 export class SettingsController extends TypertRemoteService {
   private readonly openTextFile: (path: string, signal: AbortSignal) => Promise<void>
+  private readonly legacyHome?: (() => string) | undefined
+  private readonly targetHome?: (() => string) | undefined
+  private legacyImportQueue: Promise<unknown> = Promise.resolve()
 
   /**
    * Register the settings namespace and mount the credentials namespace beside
    * it. Both namespaces stay registered when a provider is absent so calls can
    * return the configuration API's actionable missing-provider diagnostic.
    * @param ctx - Host context where settings and credential providers may be mounted.
+   * @param internals - Optional Host integration overrides for testing.
    */
   constructor(ctx: Context, internals: SettingsControllerInternals = {}) {
     super(ctx, 'settingsController', { namespace: 'settings' })
     this.openTextFile = internals.openTextFile ?? openNativeTextFile
+    this.legacyHome = internals.legacyHome
+    this.targetHome = internals.targetHome
     ctx.plugin(CredentialsController)
   }
 
@@ -181,6 +198,76 @@ export class SettingsController extends TypertRemoteService {
     } catch (error: unknown) {
       if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'settings document open was aborted', {})
       throw new RemoteError('gateway/internal', `path open failed: ${messageOf(error)}`, {}, { cause: error })
+    }
+  }
+
+  /**
+   * Inspect an existing legacy DeepSeek Harness home (`~/.dsh`) without writing to disk.
+   * @param signal - Caller cancellation signal.
+   * @returns redacted counts and availability flags for one-click migration.
+   * @throws RemoteError when called by a non-owner Peer or aborted.
+   */
+  @Remote
+  async inspectLegacyDsh(signal: AbortSignal): Promise<LegacyDshSummary> {
+    if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'legacy home inspection was aborted', {})
+    this.assertOwner('legacy-dsh')
+    try {
+      return await runInspectLegacyDsh({
+        ctx: this.ctx,
+        ...this.legacyHome === undefined ? {} : { legacyHome: this.legacyHome },
+        ...this.targetHome === undefined ? {} : { targetHome: this.targetHome },
+      }, signal)
+    } catch (error: unknown) {
+      if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'legacy home inspection was aborted', {})
+      throw new RemoteError('gateway/internal', `legacy home inspection failed: ${messageOf(error)}`, {}, { cause: error })
+    }
+  }
+
+  /**
+   * Idempotently copy sessions, attachments, skills, `AGENTS.md`, and optionally
+   * stored API keys from `~/.dsh` into the active home without overwriting target data.
+   * @param options - Migration options, including whether to copy credential refs.
+   * @param signal - Caller cancellation signal.
+   * @returns counts of copied vs skipped artifacts.
+   * @throws RemoteError when called by a non-owner Peer, invalid payload, or aborted.
+   */
+  @Remote
+  async importLegacyDsh(
+    options: LegacyDshImportOptions | undefined,
+    signal: AbortSignal,
+  ): Promise<LegacyDshImportResult> {
+    if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'legacy home import was aborted', {})
+    this.assertOwner('legacy-dsh')
+    let resolvedOptions: LegacyDshImportOptions = {}
+    if (options !== undefined) {
+      const parsed = legacyImportOptionsSchema.safeParse(options)
+      if (!parsed.success) {
+        throw new RemoteError('gateway/bad-request', 'invalid payload for settings.importLegacyDsh', { issues: parsed.error.issues })
+      }
+      resolvedOptions = parsed.data
+    }
+    const run = this.legacyImportQueue.then(async () => {
+      if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'legacy home import was aborted', {})
+      try {
+        return await runImportLegacyDsh({
+          ctx: this.ctx,
+          ...this.legacyHome === undefined ? {} : { legacyHome: this.legacyHome },
+          ...this.targetHome === undefined ? {} : { targetHome: this.targetHome },
+        }, resolvedOptions, signal)
+      } catch (error: unknown) {
+        if (isAborted(signal)) throw new RemoteError('gateway/cancelled', 'legacy home import was aborted', {})
+        throw new RemoteError('gateway/internal', `legacy home import failed: ${messageOf(error)}`, {}, { cause: error })
+      }
+    })
+    this.legacyImportQueue = run.catch(() => {
+      // Keep the single-flight chain settled after a failed or cancelled run.
+    })
+    return run
+  }
+
+  private assertOwner(ns: string): void {
+    if (principalOf(this.ctx.invocation) !== undefined) {
+      throw new RemoteError('settings/rejected', 'only the host owner may migrate local harness data', { ns })
     }
   }
 

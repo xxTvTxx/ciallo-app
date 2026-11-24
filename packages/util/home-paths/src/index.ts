@@ -1,5 +1,5 @@
 /**
- * Shared filesystem path helpers for DeepSeek Harness user data.
+ * Shared filesystem path helpers for Ciallo App (DSH) user data.
  *
  * @module @deepseek-ai/dsh-home-paths
  */
@@ -8,13 +8,19 @@ import { opendir, realpath } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 
-/** Directory name for the default DeepSeek Harness home under the OS home. */
-export const DSH_HOME_DIR_NAME = '.dsh'
+/** Directory name for the default Ciallo App home under the OS home. */
+export const DSH_HOME_DIR_NAME = '.ciallo'
 
-/** Stable user-facing display form for the default DeepSeek Harness home. */
+/** Stable user-facing display form for the default Ciallo App home. */
 export const DEFAULT_DSH_HOME_DISPLAY = `~/${DSH_HOME_DIR_NAME}`
 
-/** Environment variable that overrides the default DeepSeek Harness home. */
+/** Directory name for the legacy DeepSeek Harness home under the OS home. */
+export const LEGACY_DSH_HOME_DIR_NAME = '.dsh'
+
+/** Stable user-facing display form for the legacy DeepSeek Harness home. */
+export const LEGACY_DSH_HOME_DISPLAY = `~/${LEGACY_DSH_HOME_DIR_NAME}`
+
+/** Environment variable that overrides the default Ciallo App home. */
 export const DSH_HOME_ENV = 'DSH_HOME'
 
 /** Directory name for the default shared agent configuration root under the OS home. */
@@ -64,11 +70,19 @@ export async function canonicalizeWatchPath(path: string): Promise<string> {
 }
 
 /**
- * Resolve the default DeepSeek Harness home using Node's platform path rules.
+ * Resolve the default Ciallo App home using Node's platform path rules.
  * @returns the absolute default harness home path.
  */
 export function defaultDshHome(): string {
   return join(homedir(), DSH_HOME_DIR_NAME)
+}
+
+/**
+ * Resolve the legacy DeepSeek Harness home (`~/.dsh`) using Node's platform path rules.
+ * @returns the absolute legacy DeepSeek Harness home path.
+ */
+export function defaultLegacyDshHome(): string {
+  return join(homedir(), LEGACY_DSH_HOME_DIR_NAME)
 }
 
 /**

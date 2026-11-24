@@ -215,6 +215,13 @@ export const en = {
   startSubmit: 'Get started',
   startSubmitting: 'Setting up…',
   startContinue: 'Continue',
+  legacyDshTitle: 'Existing DeepSeek Harness data found (~/.dsh)',
+  legacyDshSummary: '{sessions} sessions detected ({newSessions} not imported yet), plus local files/keys.',
+  legacyDshFilesOnly: 'Local skills, AGENTS.md, attachments, or {credentials} saved keys detected in ~/.dsh.',
+  legacyDshIncludeCredentials: 'Also import saved API keys ({count})',
+  legacyDshImportAction: 'Import with one click',
+  legacyDshImporting: 'Importing…',
+  legacyDshImported: 'Imported {sessions} sessions ({skipped} skipped), {credentials} keys. Original ~/.dsh stays untouched.',
 }
 
 /** The settings.models namespace key union. */
@@ -435,6 +442,13 @@ export const zh: { [Key in keyof typeof en]: string } = {
   startSubmit: '开始使用',
   startSubmitting: '正在配置…',
   startContinue: '继续',
+  legacyDshTitle: '检测到已有 DeepSeek Harness 数据（~/.dsh）',
+  legacyDshSummary: '共 {sessions} 个会话（{newSessions} 个尚未导入），以及本地文件或密钥。',
+  legacyDshFilesOnly: '检测到技能、AGENTS.md、附件或 {credentials} 项已保存密钥。',
+  legacyDshIncludeCredentials: '同时导入已保存的 API 密钥（{count} 项）',
+  legacyDshImportAction: '一键导入',
+  legacyDshImporting: '导入中…',
+  legacyDshImported: '已导入 {sessions} 个会话（跳过 {skipped} 个）、{credentials} 项密钥，原 ~/.dsh 目录保持不变。',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -652,6 +666,13 @@ export const ja = {
   'startSubmit': '始める',
   'startSubmitting': '設定中…',
   'startContinue': '続ける',
+  'legacyDshTitle': '既存の DeepSeek Harness データ（~/.dsh）が見つかりました',
+  'legacyDshSummary': '{sessions} 件のセッション（未インポート {newSessions} 件）とローカルファイル／キーが見つかりました。',
+  'legacyDshFilesOnly': '~/.dsh にスキル、AGENTS.md、添付ファイル、または保存済みキー（{credentials} 件）があります。',
+  'legacyDshIncludeCredentials': '保存済みの API キーもインポートする（{count} 件）',
+  'legacyDshImportAction': 'ワンクリックでインポート',
+  'legacyDshImporting': 'インポート中…',
+  'legacyDshImported': '{sessions} 件のセッション（{skipped} 件スキップ）、{credentials} 件のキーをインポートしました。元の ~/.dsh は変更されません。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -869,6 +890,13 @@ export const es = {
   startSubmit: 'Comenzar',
   startSubmitting: 'Configurando…',
   startContinue: 'Continuar',
+  legacyDshTitle: 'Se encontraron datos de DeepSeek Harness (~/.dsh)',
+  legacyDshSummary: '{sessions} sesiones detectadas ({newSessions} aún sin importar), además de archivos o claves locales.',
+  legacyDshFilesOnly: 'Se detectaron skills, AGENTS.md, adjuntos o {credentials} claves guardadas en ~/.dsh.',
+  legacyDshIncludeCredentials: 'Importar también las claves API guardadas ({count})',
+  legacyDshImportAction: 'Importar en un clic',
+  legacyDshImporting: 'Importando…',
+  legacyDshImported: 'Se importaron {sessions} sesiones ({skipped} omitidas) y {credentials} claves. ~/.dsh permanece intacto.',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -1086,6 +1114,13 @@ export const fr = {
   startSubmit: 'Commencer',
   startSubmitting: 'Configuration…',
   startContinue: 'Continuer',
+  legacyDshTitle: 'Données DeepSeek Harness existantes détectées (~/.dsh)',
+  legacyDshSummary: '{sessions} sessions détectées ({newSessions} non importées), ainsi que des fichiers ou clés locaux.',
+  legacyDshFilesOnly: 'Compétences, AGENTS.md, pièces jointes ou {credentials} clés enregistrées détectés dans ~/.dsh.',
+  legacyDshIncludeCredentials: 'Importer aussi les clés API enregistrées ({count})',
+  legacyDshImportAction: 'Importer en un clic',
+  legacyDshImporting: 'Importation…',
+  legacyDshImported: '{sessions} sessions importées ({skipped} ignorées) et {credentials} clés. ~/.dsh reste inchangé.',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -1303,6 +1338,13 @@ export const de = {
   startSubmit: 'Loslegen',
   startSubmitting: 'Wird eingerichtet…',
   startContinue: 'Weiter',
+  legacyDshTitle: 'Vorhandene DeepSeek-Harness-Daten gefunden (~/.dsh)',
+  legacyDshSummary: '{sessions} Sitzungen erkannt ({newSessions} noch nicht importiert), plus lokale Dateien oder Schlüssel.',
+  legacyDshFilesOnly: 'Skills, AGENTS.md, Anhänge oder {credentials} gespeicherte Schlüssel in ~/.dsh gefunden.',
+  legacyDshIncludeCredentials: 'Gespeicherte API-Schlüssel ebenfalls importieren ({count})',
+  legacyDshImportAction: 'Mit einem Klick importieren',
+  legacyDshImporting: 'Wird importiert…',
+  legacyDshImported: '{sessions} Sitzungen importiert ({skipped} übersprungen), {credentials} Schlüssel. ~/.dsh bleibt unverändert.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -1520,6 +1562,13 @@ export const ru = {
   startSubmit: 'Начать',
   startSubmitting: 'Настройка…',
   startContinue: 'Продолжить',
+  legacyDshTitle: 'Обнаружены существующие данные DeepSeek Harness (~/.dsh)',
+  legacyDshSummary: 'Найдено сессий: {sessions} (ещё не импортировано: {newSessions}), а также локальные файлы или ключи.',
+  legacyDshFilesOnly: 'В ~/.dsh найдены навыки, AGENTS.md, вложения или сохранённые ключи ({credentials}).',
+  legacyDshIncludeCredentials: 'Также импортировать сохранённые API-ключи ({count})',
+  legacyDshImportAction: 'Импортировать в один клик',
+  legacyDshImporting: 'Импорт…',
+  legacyDshImported: 'Импортировано сессий: {sessions} (пропущено: {skipped}), ключей: {credentials}. Исходная папка ~/.dsh не изменена.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1737,4 +1786,11 @@ export const pt = {
   startSubmit: 'Começar',
   startSubmitting: 'Configurando…',
   startContinue: 'Continuar',
+  legacyDshTitle: 'Dados existentes do DeepSeek Harness encontrados (~/.dsh)',
+  legacyDshSummary: '{sessions} sessões detectadas ({newSessions} ainda não importadas), além de arquivos ou chaves locais.',
+  legacyDshFilesOnly: 'Skills, AGENTS.md, anexos ou {credentials} chaves salvas detectados em ~/.dsh.',
+  legacyDshIncludeCredentials: 'Importar também chaves de API salvas ({count})',
+  legacyDshImportAction: 'Importar com um clique',
+  legacyDshImporting: 'Importando…',
+  legacyDshImported: 'Importadas {sessions} sessões ({skipped} ignoradas) e {credentials} chaves. A pasta ~/.dsh permanece intacta.',
 } satisfies Record<keyof typeof en, string>

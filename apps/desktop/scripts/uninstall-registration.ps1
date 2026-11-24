@@ -1,6 +1,6 @@
 ﻿<# Remove only owned registrations; independently failed operations leave a diagnostic report. #>
 param([Parameter(Mandatory)][string]$Directory,
-    [string]$ExecutableName = 'DeepSeek Harness.exe',
+    [string]$ExecutableName = 'Ciallo.exe',
     [Parameter(Mandatory)][string]$EnvironmentKey,
     [Parameter(Mandatory)][string]$OwnerKey,
     [Parameter(Mandatory)][string]$ProtocolKey,
@@ -19,7 +19,7 @@ $failures = [Collections.Generic.List[string]]::new()
 try {
     if (-not $MutexName -or $MutexName -eq 'default') {
         $sid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-        $MutexName = 'Global\DeepSeekHarness.Command.' + $sid
+        $MutexName = 'Global\Ciallo.Command.' + $sid
     }
     $options = @{ EnvironmentKey=$EnvironmentKey; OwnerKey=$OwnerKey; MachinePath=''; MutexName=$MutexName }
     $command = Join-Path $Directory 'resources\runtime\cli\bin'
