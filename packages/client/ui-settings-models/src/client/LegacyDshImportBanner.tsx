@@ -60,7 +60,8 @@ export function LegacyDshImportBanner({
   }, [operations])
 
   if (summary === undefined || !summary.available || operations.importLegacyDsh === undefined) return null
-  if (onlyWithNewSessions && summary.newSessionCount === 0 && summary.sessionCount > 0 && result === undefined) {
+  const hasPendingItems = summary.newSessionCount > 0 || summary.newProviderCount > 0
+  if (onlyWithNewSessions && !hasPendingItems && (summary.sessionCount > 0 || summary.providerCount > 0) && result === undefined) {
     return null
   }
 
@@ -76,11 +77,16 @@ export function LegacyDshImportBanner({
       }
       setResult(outcome.result)
       onImported?.(outcome.result)
-      void controller.load()
-      if (operations.inspectLegacyDsh !== undefined) {
-        const refreshed = await operations.inspectLegacyDsh().catch(() => undefined)
-        if (refreshed !== undefined) setSummary(refreshed)
-      }
+      await Promise.all([
+        controller.load(),
+        operations.inspectLegacyDsh === undefined
+          ? Promise.resolve()
+          : operations.inspectLegacyDsh().then((refreshed) => {
+            if (refreshed !== undefined) setSummary(refreshed)
+          }).catch(() => {
+            // Leaving stale banner counts intact is safe when background refresh fails.
+          }),
+      ])
     } finally {
       setBusy(false)
     }
@@ -94,8 +100,8 @@ export function LegacyDshImportBanner({
       .replace('{credentials}', () => String(summary.credentialCount))
     : t('legacyDshFilesOnly').replace('{credentials}', () => String(summary.credentialCount))
 
-  const nothingPending = (result !== undefined && summary.newSessionCount === 0)
-    || (summary.newSessionCount === 0 && summary.credentialCount === 0 && extraCount === 0)
+  const nothingPending = (result !== undefined && summary.newSessionCount === 0 && summary.newProviderCount === 0)
+    || (summary.newSessionCount === 0 && summary.newProviderCount === 0 && summary.credentialCount === 0 && extraCount === 0)
 
   return (
     <div className={compact ? `${styles['card']} ${styles['compact']}` : styles['card']}>
@@ -130,6 +136,7 @@ export function LegacyDshImportBanner({
             {t('legacyDshImported')
               .replace('{sessions}', () => String(result.importedSessions))
               .replace('{skipped}', () => String(result.skippedSessions))
+              .replace('{providers}', () => String(result.importedProviders))
               .replace('{credentials}', () => String(result.importedCredentials))}
           </p>
         )}

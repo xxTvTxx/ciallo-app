@@ -53,6 +53,10 @@ export interface LegacyDshSummary {
   readonly hasAgentsMd: boolean
   /** Number of stored credential references detected (values never leave Host). */
   readonly credentialCount: number
+  /** Total model provider configs detected across legacy profiles. */
+  readonly providerCount: number
+  /** Legacy model provider configs not yet configured in the active target home. */
+  readonly newProviderCount: number
 }
 
 /** Caller options for importing legacy DeepSeek Harness home data. */
@@ -77,4 +81,6 @@ export interface LegacyDshImportResult {
   readonly importedAgentsMd: boolean
   /** Number of credential references written into the target credential store. */
   readonly importedCredentials: number
+  /** Number of model provider configs newly imported into active settings. */
+  readonly importedProviders: number
 }

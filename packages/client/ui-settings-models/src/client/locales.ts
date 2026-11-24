@@ -221,7 +221,7 @@ export const en = {
   legacyDshIncludeCredentials: 'Also import saved API keys ({count})',
   legacyDshImportAction: 'Import with one click',
   legacyDshImporting: 'Importing…',
-  legacyDshImported: 'Imported {sessions} sessions ({skipped} skipped), {credentials} keys. Original ~/.dsh stays untouched.',
+  legacyDshImported: 'Imported {sessions} sessions ({skipped} skipped), {providers} model providers, {credentials} keys. Original ~/.dsh stays untouched.',
 }
 
 /** The settings.models namespace key union. */
@@ -448,7 +448,7 @@ export const zh: { [Key in keyof typeof en]: string } = {
   legacyDshIncludeCredentials: '同时导入已保存的 API 密钥（{count} 项）',
   legacyDshImportAction: '一键导入',
   legacyDshImporting: '导入中…',
-  legacyDshImported: '已导入 {sessions} 个会话（跳过 {skipped} 个）、{credentials} 项密钥，原 ~/.dsh 目录保持不变。',
+  legacyDshImported: '已导入 {sessions} 个会话（跳过 {skipped} 个）、{providers} 个模型提供商、{credentials} 项密钥，原 ~/.dsh 目录保持不变。',
 }
 
 /** Japanese copy, checked against the English keys. */
@@ -672,7 +672,7 @@ export const ja = {
   'legacyDshIncludeCredentials': '保存済みの API キーもインポートする（{count} 件）',
   'legacyDshImportAction': 'ワンクリックでインポート',
   'legacyDshImporting': 'インポート中…',
-  'legacyDshImported': '{sessions} 件のセッション（{skipped} 件スキップ）、{credentials} 件のキーをインポートしました。元の ~/.dsh は変更されません。',
+  'legacyDshImported': '{sessions} 件のセッション（{skipped} 件スキップ）、{providers} 件のモデルプロバイダー、{credentials} 件のキーをインポートしました。元の ~/.dsh は変更されません。',
 } satisfies Record<keyof typeof en, string>
 
 /** Spanish dictionary, checked against the English keys. */
@@ -896,7 +896,7 @@ export const es = {
   legacyDshIncludeCredentials: 'Importar también las claves API guardadas ({count})',
   legacyDshImportAction: 'Importar en un clic',
   legacyDshImporting: 'Importando…',
-  legacyDshImported: 'Se importaron {sessions} sesiones ({skipped} omitidas) y {credentials} claves. ~/.dsh permanece intacto.',
+  legacyDshImported: 'Se importaron {sessions} sesiones ({skipped} omitidas), {providers} proveedores de modelos y {credentials} claves. ~/.dsh permanece intacto.',
 } satisfies Record<keyof typeof en, string>
 
 /** French dictionary, checked against the English keys. */
@@ -1120,7 +1120,7 @@ export const fr = {
   legacyDshIncludeCredentials: 'Importer aussi les clés API enregistrées ({count})',
   legacyDshImportAction: 'Importer en un clic',
   legacyDshImporting: 'Importation…',
-  legacyDshImported: '{sessions} sessions importées ({skipped} ignorées) et {credentials} clés. ~/.dsh reste inchangé.',
+  legacyDshImported: '{sessions} sessions importées ({skipped} ignorées), {providers} fournisseurs de modèles et {credentials} clés. ~/.dsh reste inchangé.',
 } satisfies Record<keyof typeof en, string>
 
 /** German dictionary, checked against the English keys. */
@@ -1344,7 +1344,7 @@ export const de = {
   legacyDshIncludeCredentials: 'Gespeicherte API-Schlüssel ebenfalls importieren ({count})',
   legacyDshImportAction: 'Mit einem Klick importieren',
   legacyDshImporting: 'Wird importiert…',
-  legacyDshImported: '{sessions} Sitzungen importiert ({skipped} übersprungen), {credentials} Schlüssel. ~/.dsh bleibt unverändert.',
+  legacyDshImported: '{sessions} Sitzungen importiert ({skipped} übersprungen), {providers} Modellanbieter, {credentials} Schlüssel. ~/.dsh bleibt unverändert.',
 } satisfies Record<keyof typeof en, string>
 
 /** Russian dictionary, checked against the English keys. */
@@ -1568,7 +1568,7 @@ export const ru = {
   legacyDshIncludeCredentials: 'Также импортировать сохранённые API-ключи ({count})',
   legacyDshImportAction: 'Импортировать в один клик',
   legacyDshImporting: 'Импорт…',
-  legacyDshImported: 'Импортировано сессий: {sessions} (пропущено: {skipped}), ключей: {credentials}. Исходная папка ~/.dsh не изменена.',
+  legacyDshImported: 'Импортировано сессий: {sessions} (пропущено: {skipped}), провайдеров моделей: {providers}, ключей: {credentials}. Исходная папка ~/.dsh не изменена.',
 } satisfies Record<keyof typeof en, string>
 
 /** Portuguese dictionary, checked against the English keys. */
@@ -1792,5 +1792,5 @@ export const pt = {
   legacyDshIncludeCredentials: 'Importar também chaves de API salvas ({count})',
   legacyDshImportAction: 'Importar com um clique',
   legacyDshImporting: 'Importando…',
-  legacyDshImported: 'Importadas {sessions} sessões ({skipped} ignoradas) e {credentials} chaves. A pasta ~/.dsh permanece intacta.',
+  legacyDshImported: 'Importadas {sessions} sessões ({skipped} ignoradas), {providers} provedores de modelos e {credentials} chaves. A pasta ~/.dsh permanece intacta.',
 } satisfies Record<keyof typeof en, string>

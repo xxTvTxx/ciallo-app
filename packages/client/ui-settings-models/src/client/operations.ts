@@ -7,6 +7,7 @@
 
 import type { Context as ClientContext } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-api-session-controller/client'
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {
   LegacyDshImportOptions, LegacyDshImportResult, LegacyDshSummary,
   LlmDiscoveredModel, LlmModelDiscoveryRequest,
@@ -161,9 +162,20 @@ export function createModelsOperations(ctx: ClientContext): ModelsOperations {
     importLegacyDsh: async (options) => {
       const response = await ctx.remote.settings.importLegacyDsh(options)
       if (!response.ok) return { kind: 'refused', message: response.error.message }
-      await ctx.get('sessions')?.refresh().catch(() => {
-        // Live session list refresh failure should not hide a committed disk import.
-      })
+      await Promise.all([
+        ctx.get('sessions')?.refresh().catch(() => {
+          // Live session list refresh failure should not hide a committed disk import.
+        }),
+        (async () => {
+          const describeFace = ctx.get('configForms')?.describe()
+          if (describeFace === undefined) return
+          const described = await ctx.remote.settings.describe()
+          if (!described.ok) return
+          for (const view of described.value.namespaces) describeFace.acceptView(view)
+        })().catch(() => {
+          // Live settings mirror refresh failure should not hide a committed disk import.
+        }),
+      ])
       return { kind: 'imported', result: response.value }
     },
   }

@@ -83,10 +83,12 @@ describe('LegacyDshImportBanner integration', () => {
       hasSkills: true,
       hasAgentsMd: true,
       credentialCount: 2,
+      providerCount: 5,
+      newProviderCount: 5,
     }
     const inspectLegacyDsh = vi.fn(async () => summary)
     const importLegacyDsh = vi.fn(async () => {
-      summary = { ...summary, newSessionCount: 0 }
+      summary = { ...summary, newSessionCount: 0, newProviderCount: 0 }
       return {
         kind: 'imported' as const,
         result: {
@@ -97,6 +99,7 @@ describe('LegacyDshImportBanner integration', () => {
           importedSkills: 1,
           importedAgentsMd: true,
           importedCredentials: 0,
+          importedProviders: 5,
         },
       }
     })
@@ -141,7 +144,7 @@ describe('LegacyDshImportBanner integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: en.legacyDshImportAction }))
     await waitFor(() => { expect(importLegacyDsh).toHaveBeenCalledWith({ includeCredentials: false }) })
-    expect(await screen.findByText(/Imported 4 sessions/)).toBeTruthy()
+    expect(await screen.findByText(/Imported 4 sessions \(0 skipped\), 5 model providers, 0 keys/)).toBeTruthy()
   })
 
   it('shows migration banner in ModelsSection when unimported sessions exist and reports errors', async () => {
@@ -164,6 +167,8 @@ describe('LegacyDshImportBanner integration', () => {
         hasSkills: false,
         hasAgentsMd: false,
         credentialCount: 0,
+        providerCount: 0,
+        newProviderCount: 0,
       })),
       importLegacyDsh: vi.fn(async () => ({ kind: 'refused' as const, message: 'disk read failed' })),
     }

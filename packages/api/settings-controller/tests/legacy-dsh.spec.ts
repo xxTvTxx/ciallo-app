@@ -176,6 +176,7 @@ describe('legacy ~/.dsh inspection and migration', () => {
       importedSkills: 1,
       importedAgentsMd: true,
       importedCredentials: 1,
+      importedProviders: 0,
     })
     expect(await readFile(join(targetRoot, 'sessions', '--proj--', 'sess-1', 'session.v4.jsonl.zstd'), 'utf8')).toBe('legacy-session-1')
     expect(await readFile(join(existingS2, 'session.v4.jsonl.zstd'), 'utf8')).toBe('target-existing-session-2')
@@ -194,6 +195,7 @@ describe('legacy ~/.dsh inspection and migration', () => {
       importedSkills: 0,
       importedAgentsMd: false,
       importedCredentials: 0,
+      importedProviders: 0,
     })
   })
 
@@ -365,5 +367,219 @@ describe('legacy ~/.dsh inspection and migration', () => {
       sessionListMetadata: { blank: false, lastPromptAt: null },
     })
     expect((await controller.inspectLegacyDsh(new AbortController().signal)).newSessionCount).toBe(0)
+  })
+
+  it('imports profile model providers, upgrades local affinity proxies, and preserves target routes', async () => {
+    const legacyRoot = await makeTempDir('dsh-legacy-models-src-')
+    const targetRoot = await makeTempDir('dsh-target-models-dst-')
+
+    await mkdir(join(legacyRoot, 'profiles', 'desktop', 'node_modules', '@local', 'dsh-ciallo-affinity'), { recursive: true })
+    await mkdir(join(legacyRoot, 'profiles', 'web'), { recursive: true })
+    await writeFile(
+      join(legacyRoot, 'profiles', 'desktop', 'package.json'),
+      JSON.stringify({
+        name: 'dsh-profile-desktop',
+        private: true,
+        dependencies: {
+          '@local/dsh-ciallo-affinity': 'github:xxTvTxx/dsh-ciallo-affinity#v1.1.2',
+        },
+        dsh: {
+          profile: {
+            bundles: ['@deepseek-ai/dsh-base', '@local/dsh-ciallo-affinity'],
+          },
+        },
+      }),
+      'utf8',
+    )
+    await writeFile(
+      join(legacyRoot, 'profiles', 'desktop', 'node_modules', '@local', 'dsh-ciallo-affinity', 'cordis.patch.yml'),
+      [
+        '- insert:',
+        '    - id: ciallo-affinity',
+        '      name: "@local/dsh-ciallo-affinity"',
+        '      config:',
+        '        port: 18765',
+        '        upstream: https://cialloapi.com/',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(
+      join(legacyRoot, 'profiles', 'desktop', 'cordis.patch.yml'),
+      [
+        '- id: theme',
+        '  config:',
+        '    accent: !js "window.defaultAccent"',
+        '- id: llm-pi-ai',
+        '  config:',
+        '    providers:',
+        '      ciallo-claude:',
+        '        displayName: Ciallo-Claude',
+        '        api: anthropic-messages',
+        '        baseURL: http://127.0.0.1:18765',
+        '        apiKeyEnv: OHMYSWITCH_CIALLO_CLAUDE_API_KEY',
+        '      local-ollama:',
+        '        displayName: Local Ollama',
+        '        api: anthropic-messages',
+        '        baseURL: http://127.0.0.1:11434',
+        '      ciallo:',
+        '        displayName: Ciallo',
+        '        api: openai-responses',
+        '        baseURL: https://cialloapi.com/v1',
+        '        apiKeyEnv: OHMYSWITCH_CIALLO_API_KEY',
+        '      existing-custom:',
+        '        displayName: Legacy Custom',
+        '        api: openai-completions',
+        '        baseURL: https://legacy.example/v1',
+        '        apiKeyEnv: LEGACY_KEY',
+        '- id: agent-default-model',
+        '  config:',
+        '    provider: ciallo-claude',
+        '    model: claude-opus-5-5',
+        '    reasoningEffort: medium',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    await writeFile(
+      join(legacyRoot, 'profiles', 'web', 'cordis.patch.yml'),
+      [
+        '- id: llm-pi-ai',
+        '  config:',
+        '    providers:',
+        '      ciallo:',
+        '        displayName: Web Duplicate Should Be Ignored',
+        '        api: openai-responses',
+        '        baseURL: https://ignored.example/v1',
+        '      openrouter:',
+        '        displayName: OpenRouter',
+        '        api: openai-completions',
+        '        baseURL: https://openrouter.ai/api/v1',
+        '        apiKeyEnv: OPENROUTER_API_KEY',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+
+    const piAiState: { providers: Record<string, Record<string, unknown>> } = {
+      providers: {
+        'existing-custom': {
+          displayName: 'Target Existing Custom',
+          api: 'openai-completions',
+          baseURL: 'https://target.example/v1',
+          apiKeyEnv: 'TARGET_KEY',
+        },
+      },
+    }
+    const defaultModelState: Record<string, unknown> = {}
+    let piAiRevision = 1
+    let defaultRevision = 1
+
+    const ctx = new Context()
+    onTestFinished(() => ctx.fiber.dispose())
+    ctx.provide('settings', {
+      writable: true,
+      describe: () => [
+        {
+          ns: 'llm-pi-ai',
+          schema: { type: 'object', properties: { providers: { type: 'object' } } },
+          value: { providers: { ...piAiState.providers } },
+          user: { providers: { ...piAiState.providers } },
+          revision: piAiRevision,
+          applies: 'live',
+        },
+        {
+          ns: 'agent-default-model',
+          schema: {
+            type: 'object',
+            properties: {
+              provider: { type: 'string' },
+              model: { type: 'string' },
+              reasoningEffort: { type: 'string' },
+            },
+          },
+          value: { ...defaultModelState },
+          user: { ...defaultModelState },
+          revision: defaultRevision,
+          applies: 'live',
+        },
+      ],
+      async mutate(ns: string, ops: ReadonlyArray<{ op: string; path: readonly string[]; value?: unknown }>, expectedRevision?: number) {
+        if (ns !== 'llm-pi-ai') throw new Error(`unexpected namespace ${ns}`)
+        if (expectedRevision !== undefined && expectedRevision !== piAiRevision) {
+          throw new Error(`revision conflict: ${expectedRevision} !== ${piAiRevision}`)
+        }
+        for (const op of ops) {
+          if (op.op === 'set' && op.path.length === 2 && op.path[0] === 'providers') {
+            piAiState.providers[op.path[1]!] = op.value as Record<string, unknown>
+          }
+        }
+        piAiRevision++
+      },
+      async update(ns: string, patch: Record<string, unknown>, expectedRevision?: number) {
+        if (ns !== 'agent-default-model') throw new Error(`unexpected namespace ${ns}`)
+        if (expectedRevision !== undefined && expectedRevision !== defaultRevision) {
+          throw new Error(`revision conflict: ${expectedRevision} !== ${defaultRevision}`)
+        }
+        Object.assign(defaultModelState, patch)
+        defaultRevision++
+      },
+    } as never)
+
+    const controller = new SettingsController(ctx, {
+      legacyHome: () => legacyRoot,
+      targetHome: () => targetRoot,
+    })
+
+    const before = await controller.inspectLegacyDsh(new AbortController().signal)
+    expect(before.available).toBe(true)
+    expect(before.providerCount).toBe(5)
+    expect(before.newProviderCount).toBe(4)
+
+    const outcome = await controller.importLegacyDsh({ includeCredentials: false }, new AbortController().signal)
+    expect(outcome.importedProviders).toBe(4)
+
+    expect(piAiState.providers['existing-custom']).toEqual({
+      displayName: 'Target Existing Custom',
+      api: 'openai-completions',
+      baseURL: 'https://target.example/v1',
+      apiKeyEnv: 'TARGET_KEY',
+    })
+    expect(piAiState.providers['ciallo-claude']).toEqual({
+      displayName: 'Ciallo-Claude',
+      api: 'anthropic-messages',
+      baseURL: 'https://cialloapi.com',
+      apiKeyEnv: 'OHMYSWITCH_CIALLO_CLAUDE_API_KEY',
+      sessionAffinity: true,
+    })
+    expect(piAiState.providers['local-ollama']).toEqual({
+      displayName: 'Local Ollama',
+      api: 'anthropic-messages',
+      baseURL: 'http://127.0.0.1:11434',
+    })
+    expect(piAiState.providers['ciallo']).toEqual({
+      displayName: 'Ciallo',
+      api: 'openai-responses',
+      baseURL: 'https://cialloapi.com/v1',
+      apiKeyEnv: 'OHMYSWITCH_CIALLO_API_KEY',
+    })
+    expect(piAiState.providers['openrouter']).toEqual({
+      displayName: 'OpenRouter',
+      api: 'openai-completions',
+      baseURL: 'https://openrouter.ai/api/v1',
+      apiKeyEnv: 'OPENROUTER_API_KEY',
+    })
+    expect(defaultModelState).toEqual({
+      provider: 'ciallo-claude',
+      model: 'claude-opus-5-5',
+      reasoningEffort: 'medium',
+    })
+
+    const after = await controller.inspectLegacyDsh(new AbortController().signal)
+    expect(after.providerCount).toBe(5)
+    expect(after.newProviderCount).toBe(0)
+
+    const second = await controller.importLegacyDsh({ includeCredentials: false }, new AbortController().signal)
+    expect(second.importedProviders).toBe(0)
   })
 })
