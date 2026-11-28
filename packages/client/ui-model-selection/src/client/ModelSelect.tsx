@@ -39,19 +39,20 @@
  * place of its chevron, and each model row and effort chip whose value that
  * selection carries shows one.
  */
-import { MenuGroup, MenuSurface, observeStickyMenuGroups } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MenuGroup, MenuSurface, observeStickyMenuGroups } from '@deepseek-ai/dsh-client-ui-primitives/client'
 import {
   Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
   type CSSProperties, type KeyboardEvent, type FocusEvent,
 } from 'react'
-import { createPortal } from 'react-dom'
 import clsx from 'clsx'
 import type { ModelReasoningEffort, ModelSelection } from '@deepseek-ai/dsh-api-remotes/client'
 import {
   IconCheckOutlineRegular, IconChevronDownOutlineRegular, IconCloseFillRegular,
-  IconDataOutlineRegular, IconWarningOutlineRegular, Input, isMobileDevice, StateDot, Tag, Toast,
-} from '@deepseek-ai/dsh-client-ui-primitives'
-import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+  IconDataOutlineRegular, IconWarningOutlineRegular, Input, StateDot, Tag, Toast,
+} from '@deepseek-ai/dsh-client-ui-primitives/client'
+import type { PropsLocale, PropsRenderSlots, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots/client'
+// Type-only: the `useMobile` standard prop merge.
+import type {} from '@deepseek-ai/dsh-client-ui-responsive/client'
 import type { CacheRetention } from './directory.ts'
 import type { ModelLabelOwner, ModelMenuControls, ModelMenuPaneRef, ModelSelectInjected } from './slots.ts'
 import css from './ModelSelect.module.css'
@@ -98,14 +99,16 @@ function sameModel(a: ModelRef | null | undefined, b: ModelRef | null | undefine
  * @returns the trigger and, while open, the model menu.
  */
 export function ModelSelect(
-  { locked, available, directory, load, select, selectCacheRetention, resolveText, t, renderSlot }:
-  ModelSelectInjected & Pick<PropsRuntime<'conversation.input.model'>, 'locked'> & PropsLocale<'model'>
+  { locked, available, directory, load, select, selectCacheRetention, resolveText, t, renderSlot, useMobile, useDocumentPortal }:
+  ModelSelectInjected & Pick<PropsRuntime<'conversation.input.model'>, 'locked' | 'useMobile' | 'useDocumentPortal'> & PropsLocale<'model'>
     & Omit<PropsRenderSlots<'conversation.input.model.label' | 'conversation.input.model.options' | 'conversation.input.model.pane'>, 'SessionProvider'>,
 ) {
   const state = useSyncExternalStore(
     fn => directory.subscribe(fn),
     () => directory.getSnapshot(),
   )
+  const mobile = useMobile()
+  const Portal = useDocumentPortal()
   const [open, setOpen] = useState(false)
   const [pane, setPane] = useState<Pane>(LIST_PANE)
   const [picked, setPicked] = useState<ModelRef | null>(null)
@@ -128,7 +131,7 @@ export function ModelSelect(
   const modelRefs = useRef<(HTMLButtonElement | null)[]>([])
   const id = useId()
   const anchorStyle: CSSProperties & Record<'--dsh-model-anchor', string> = {
-    '--dsh-model-anchor': `--dsh-model-${id.replaceAll(':', '')}`,
+    '--dsh-model-anchor': `--dsh-model-${id.replace(/[^\w-]/g, '')}`,
   }
 
   const accountProviderName = t('provider.account')
@@ -196,6 +199,7 @@ export function ModelSelect(
 
   useEffect(() => {
     if (!open) return
+    const owner = rootRef.current?.ownerDocument ?? document
     const closeOutside = (event: MouseEvent): void => {
       // The portaled card is outside the trigger subtree; check both.
       if (rootRef.current?.contains(event.target as Node) === true) return
@@ -203,11 +207,11 @@ export function ModelSelect(
       setOpen(false)
     }
     // WebKit touch taps on non-clickable areas dispatch pointerdown without mousedown.
-    document.addEventListener('pointerdown', closeOutside)
-    document.addEventListener('mousedown', closeOutside)
+    owner.addEventListener('pointerdown', closeOutside)
+    owner.addEventListener('mousedown', closeOutside)
     return () => {
-      document.removeEventListener('pointerdown', closeOutside)
-      document.removeEventListener('mousedown', closeOutside)
+      owner.removeEventListener('pointerdown', closeOutside)
+      owner.removeEventListener('mousedown', closeOutside)
     }
   }, [open])
 
@@ -232,7 +236,8 @@ export function ModelSelect(
     if (intent === 'detail') {
       // A detail pane places its own initial focus (autoFocus commits before
       // this effect); otherwise the surface keeps the menu's keys reachable.
-      if (menu?.contains(document.activeElement) !== true) (menu ?? triggerRef.current)?.focus()
+      const active = menu?.ownerDocument.activeElement ?? null
+      if (menu?.contains(active) !== true) (menu ?? triggerRef.current)?.focus()
       return
     }
     if (intent === 'expand') {
@@ -242,7 +247,7 @@ export function ModelSelect(
       return
     }
     if (intent === 'open') {
-      if (showSearch && !isMobileDevice()) {
+      if (showSearch && !mobile) {
         searchRef.current?.focus()
         return
       }
@@ -257,7 +262,7 @@ export function ModelSelect(
     const cell = Array.from(menu?.querySelectorAll<HTMLButtonElement>('[data-model-menu-pane]') ?? [])
       .find(button => button.dataset.modelMenuPane === intent.back.key)
     ;(cell !== undefined && !cell.disabled ? cell : triggerRef.current)?.focus()
-  }, [open, pane, picked, showSearch])
+  }, [open, pane, picked, showSearch, mobile])
 
   useEffect(() => {
     const viewport = groupsRef.current
@@ -336,7 +341,7 @@ export function ModelSelect(
   const step = (offset: number): void => {
     const items = navRows()
     if (items.length === 0) return
-    const focused = document.activeElement
+    const focused = (menuRef.current ?? rootRef.current)?.ownerDocument.activeElement ?? null
     const searching = showSearch && pane.kind === 'list' && searchRef.current !== null
     const active = searching && focused === searchRef.current
       ? items.findIndex(item => item.hasAttribute('data-highlighted'))
@@ -394,11 +399,12 @@ export function ModelSelect(
       // the trigger, Tab enters the menu at the value in use instead. Any
       // other control inside the card (a retry button) keeps the browser's
       // traversal, so the keystroke stays unconsumed there.
-      const focused = document.activeElement
+      const focused = (menuRef.current ?? rootRef.current)?.ownerDocument.activeElement ?? null
       const rows = navRows()
-      if (focused instanceof HTMLButtonElement && rows.includes(focused)) {
+      const row = rows.find(item => item === focused)
+      if (row !== undefined) {
         event.preventDefault()
-        focused.click()
+        row.click()
         return
       }
       if (focused !== triggerRef.current) return
@@ -421,10 +427,8 @@ export function ModelSelect(
   const onBlur = (event: FocusEvent<HTMLDivElement>): void => {
     // Clicking explanation text can clear focus without leaving its page.
     if (pane.kind === 'detail' && event.relatedTarget === null) return
-    if (event.relatedTarget instanceof Node && (
-      rootRef.current?.contains(event.relatedTarget) === true
-      || menuRef.current?.contains(event.relatedTarget) === true
-    )) return
+    if (rootRef.current?.contains(event.relatedTarget) === true
+      || menuRef.current?.contains(event.relatedTarget) === true) return
     close()
   }
 
@@ -599,12 +603,12 @@ export function ModelSelect(
         // through onBlur; other focusable controls, which plugin options may
         // render, keep their default focus, and a detail pane keeps the default
         // so its prose stays selectable.
-        const { target } = event
-        if (target instanceof Element && (
-          target.closest('button') !== null
-          || (pane.kind !== 'detail' && menuRef.current?.contains(target) === true
-            && target.closest('a[href], input, select, textarea, [role="button"], [contenteditable], [tabindex]') === null)
-        )) event.preventDefault()
+        // A text target has no `closest`, so it matches neither test.
+        const target = event.target as Partial<Element>
+        if (target.closest?.('button') != null
+          || (pane.kind !== 'detail' && menuRef.current?.contains(event.target as Node) === true
+            && target.closest?.('a[href], input, select, textarea, [role="button"], [contenteditable], [tabindex]') === null)
+        ) event.preventDefault()
       }}
     >
       <button
@@ -640,10 +644,10 @@ export function ModelSelect(
           : <IconChevronDownOutlineRegular className={clsx(css.chevron, open && css.chevronOpen)} />}
       </button>
 
-      {/* Portaled to body (Menu primitive's portal mode) so the sidebar and
+      {/* Portaled to the application document's body so the sidebar and
           column overflow clips cannot crop the card; synthetic events still
           bubble through this React subtree, keeping onKeyDown/onBlur live. */}
-      {open && createPortal(
+      {open && <Portal>
         <MenuSurface
           ref={menuRef}
           data-model-menu=""
@@ -772,9 +776,8 @@ export function ModelSelect(
               {renderSlot('conversation.input.model.pane', controls, { entryKey: pane.pane.key })}
             </div>
           )}
-        </MenuSurface>,
-        document.body,
-      )}
+        </MenuSurface>
+      </Portal>}
       {toast !== null && (
         <Toast
           key={toast.seq}

@@ -7,8 +7,8 @@ import { PixelWhale } from './home-whale/PixelWhale.tsx'
 import { OfficialBrandMark, OfficialBrandName } from './Brand.tsx'
 import { PlaceholderMark } from './PlaceholderMark.tsx'
 
-/** Required service: the UI slot registry. */
-export const inject = ['slots']
+/** Required services: the UI slot registry, and `theme`, whose owner publishes the `useTheme` prop the whale reads. */
+export const inject = ['slots', 'theme']
 
 /**
  * Fill the brand marks and frame the blank home with the whale decoration.

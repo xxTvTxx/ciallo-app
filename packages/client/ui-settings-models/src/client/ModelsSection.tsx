@@ -2,10 +2,12 @@
  * Models settings section: the CialloAPI default card, then the provider rows
  * joined from the configurable directory, settings namespaces, and credential
  * states, with one editor card at a time. Rows retain the account-first order
- * supplied by the store and expose only confirmed API-key state through
- * accessible solid configured or missing dots. CialloAPI group routes appear
- * only in the CialloAPI card, and a whole-section provider whose key is
- * confirmed missing appears only in the add card. The add flow is one card behind one
+ * supplied by the store and expose only confirmed API-key state: a solid dot
+ * when the key is configured, and a dot beside its wording when it is missing.
+ * A row whose editor is open becomes the editing surface itself, under its own
+ * name, and offers no second Edit. CialloAPI group routes appear only in the
+ * CialloAPI card, and a whole-section provider whose key is confirmed missing
+ * appears only in the add card. The add flow is one card behind one
  * button: a mode switch chooses between adopting a dormant directory provider
  * (the catalog select over the provider editor) and declaring a custom model
  * API (the create form). A panel mounts the first time its mode is shown and
@@ -22,8 +24,8 @@
 
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button, IconPlusOutlineRegular, Modal, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
+import { Button, IconPlusOutlineRegular, Modal, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives/client'
+import type { InjectFace, PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots/client'
 import type { LlmNativeAuth, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 // Type-only: pulls this package's SlotMap merge (the two Models child slots).
 import type {} from './slot-contract.ts'
@@ -32,7 +34,7 @@ import { cialloApiProtocols } from './ciallo-api.ts'
 import { isCialloRoute } from './ciallo-groups.ts'
 import { CialloApiCard } from './CialloApiCard.tsx'
 import { LegacyDshImportBanner } from './LegacyDshImportBanner.tsx'
-import { deriveKeyRef, protocolChoices, reasoningLevelChoices } from './store.ts'
+import { deriveKeyRef, PI_AI_ADAPTER_NS, PI_AI_PROFILE_PATH, protocolChoices, reasoningLevelChoices } from './store.ts'
 import type { ModelsSettingsStore, ProviderRow } from './store.ts'
 import type { ModelsOperations } from './operations.ts'
 import type { SettingsSchemaOperations } from './schema-operations.ts'
@@ -118,19 +120,28 @@ interface CatalogDraft {
 /** Values that vary around the shared provider-editor rendering. */
 interface ProviderEditorRenderProps extends Pick<
   ProviderEditorProps,
-  'namespace' | 'schema' | 'operations' | 't' | 'readOnly' | 'onClose'
+  'namespace' | 'schema' | 'operations' | 't' | 'readOnly' | 'onClose' | 'hideTitle'
 > {
   target: EditorTarget
   row: ProviderRow
+}
+
+/** Whether a settings layer holds no field: an absent layer, or one without a key. */
+function emptyLayer(layer: unknown): boolean {
+  return typeof layer !== 'object' || layer === null || Object.keys(layer).length === 0
 }
 
 /** Render an editor for either the setup posture or an expanded provider row. */
 function renderProviderEditor({ target, row, ...props }: ProviderEditorRenderProps): ReactNode {
   return (
     <ProviderEditor
+      // A route's settings address changes when a provider row starts or stops serving it; a draft and
+      // revision read at one address must not be written to the other.
+      key={[target.settingsNs, ...target.settingsPath].join('\n')}
       provider={target.provider}
       displayName={target.displayName}
       settingsPath={target.settingsPath}
+      adapterNs={row.adapterNs}
       {...target.declared === true ? { declared: true } : {}}
       {...target.defaultBaseURL === undefined ? {} : { defaultBaseURL: target.defaultBaseURL }}
       {...target.baseURLEnv === undefined ? {} : { baseURLEnv: target.baseURLEnv }}
@@ -176,12 +187,14 @@ export async function removeProviderProfile(
  * Whether a configured row is a whole-section provider whose key is confirmed
  * missing, such as DeepSeek API before its key is entered. Such a provider is
  * offered by the add card instead of occupying a row, and becomes an ordinary
- * row once its key is stored.
+ * row once its key is stored. A pi-ai provider row (`adapterNs !== settingsNs`)
+ * is one that a composition layer added and stays listed as an ordinary row.
  * @param row - the joined provider row.
  * @returns whether the row is listed only as an addable provider.
  */
 export function dormantSection(row: ProviderRow): boolean {
   return row.configured && row.entry.provider !== 'deepseek-account' && row.entry.settingsPath.length === 0
+    && row.adapterNs === row.entry.settingsNs
     && row.entry.error === undefined && row.apiKeyEnv !== undefined && row.credential?.configured === false
 }
 
@@ -373,9 +386,9 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
   // Hand-declared routes live in the pi-ai namespace, which is also the only
   // one whose schema names the protocols one may speak; without it mounted
   // there is nothing to declare and the mode is not offered.
-  const piAi = state.namespaces.get('llm-pi-ai')
-  const protocols = protocolChoices(piAi, schema)
-  const reasoningLevels = reasoningLevelChoices(piAi, schema)
+  const piAi = state.namespaces.get(PI_AI_ADAPTER_NS)
+  const protocols = protocolChoices(piAi, PI_AI_PROFILE_PATH, schema)
+  const reasoningLevels = reasoningLevelChoices(piAi, PI_AI_PROFILE_PATH, schema)
   const cialloProtocols = cialloApiProtocols(protocols)
   const providerIds = state.rows.map(row => row.entry.provider)
   // Each mode is offered while its namespace is mounted and enabled while it
@@ -463,10 +476,14 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
             && row.apiKeyEnv !== undefined
             && row.credential?.configured === false
           return (
-            <li key={row.entry.provider} className={styles['rowCard']}>
+            <li key={row.entry.provider} className={`${styles['rowCard']} ${open ? styles['rowCardOpen'] : ''}`}>
               <div className={styles['rowHead']}>
                 <span className={styles['rowIdentity']}>
                   <span className={styles['rowName']}>{row.entry.displayName}</span>
+                  {/* The open card edits this route, so it names the id its settings are stored under. */}
+                  {open && row.entry.provider !== row.entry.displayName
+                    ? <span className={styles['editorRoute']}>{row.entry.provider}</span>
+                    : null}
                   {/* Only the adapter can tell a hand-declared route from a
                       shipped one it also has a stored profile for, so the tag
                       follows its answer and stays off when it gives none. */}
@@ -493,33 +510,33 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                     )
                     : credentialMissing
                       ? (
-                        <span
-                          className={`${styles['credentialDot']} ${styles['credentialDotMissing']}`}
-                          role="img"
-                          aria-label={t('credentialMissing')}
-                          title={t('credentialMissing')}
-                        />
+                        // A missing key is the one state the reader must act on, so it is worded.
+                        <span className={styles['credentialMissing']}>
+                          <span className={`${styles['credentialDot']} ${styles['credentialDotMissing']}`} aria-hidden="true" />
+                          {t('credentialMissing')}
+                        </span>
                       )
                       : null}
                 </span>
                 <span className={styles['rowActions']}>
-                  {/* The account catalog comes from the account listing; its model overrides live in cordis.patch.yml. */}
-                  {row.entry.provider === 'deepseek-account'
+                  {/* The account catalog comes from the account listing; its model overrides live in cordis.patch.yml.
+                      An open card is dismissed by its own Cancel. */}
+                  {row.entry.provider === 'deepseek-account' || open
                     ? null
                     : (
                       <button
                         type="button"
                         className={styles['secondaryButton']}
                         aria-label={providerCopy(t('editProvider'), target)}
-                        disabled={!open && state.status !== 'ready'}
+                        disabled={state.status !== 'ready'}
                         onClick={() => {
-                          if (!open && controller.store.getSnapshot().status !== 'ready') return
+                          if (controller.store.getSnapshot().status !== 'ready') return
                           setSavedTarget(undefined)
                           // One card at a time: the add card closes with whatever
                           // it held, since closing either card would otherwise
                           // discard the other's draft.
                           setAddOpen(false)
-                          setEditing(open ? undefined : target)
+                          setEditing(target)
                         }}
                       >
                         {t('edit')}
@@ -549,16 +566,22 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
               {renderSlot(
                 'settings.models.provider-card',
                 { provider: row.entry, configured: row.configured, keyConfigured: keyConfiguredOf(row) },
-                { entryKey: row.entry.settingsNs },
+                { entryKey: row.adapterNs },
               )}
               {open
                 ? renderProviderEditor({
                   target,
                   row,
-                  namespace,
+                  // A provider row that the profile patch does not override runs with what its own layer
+                  // gives it, so that is what a cleared field returns to; it differs from the composed base
+                  // when a layer after the profile adds the row or sets its config.
+                  namespace: row.adapterNs !== namespace.ns && emptyLayer(namespace.user)
+                    ? { ...namespace, base: namespace.value }
+                    : namespace,
                   schema,
                   operations,
                   t,
+                  hideTitle: true,
                   readOnly: !state.writable,
                   onClose: (changed) => { closeEditor(changed, target) },
                 })
@@ -637,6 +660,13 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                         ))}
                       </select>
                     </div>
+                    {addRow === undefined
+                      ? null
+                      : renderSlot(
+                        'settings.models.provider-card',
+                        { provider: addRow.entry, configured: addRow.configured, keyConfigured: keyConfiguredOf(addRow) },
+                        { entryKey: addRow.adapterNs },
+                      )}
                     <ProviderEditor
                       key={draft.target.provider}
                       provider={draft.target.provider}
@@ -655,13 +685,6 @@ function Loaded({ injected, renderSlot }: { injected: ModelsSectionFace; renderS
                       onClose={(changed) => { closeEditor(changed, draft.target) }}
                       onBusyChange={setCatalogBusy}
                     />
-                    {addRow === undefined
-                      ? null
-                      : renderSlot(
-                        'settings.models.provider-card',
-                        { provider: addRow.entry, configured: addRow.configured, keyConfigured: keyConfiguredOf(addRow) },
-                        { entryKey: addRow.entry.settingsNs },
-                      )}
                   </div>
                 )
                 : null}

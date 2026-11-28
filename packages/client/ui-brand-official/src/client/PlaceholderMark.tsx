@@ -7,7 +7,7 @@ import type { HeroBrandMarkOwnerProps } from '@deepseek-ai/dsh-client-ui-convers
  * @param props - requested square edge and optional host class.
  * @returns the decorative mark svg.
  */
-export function PlaceholderMark({ size, className }: SidebarBrandMarkOwnerProps & Partial<Pick<HeroBrandMarkOwnerProps, 'className'>>) {
+export function PlaceholderMark({ size, className }: SidebarBrandMarkOwnerProps & HeroBrandMarkOwnerProps & { className?: string }) {
   return (
     <svg width={size} height={size} className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="1" y="1" width="22" height="22" rx="7" fill="currentColor" />

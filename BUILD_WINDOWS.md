@@ -77,6 +77,7 @@ git merge dsh-v<目标版本号>
 
 ## 5. 变更记录
 
+- 2026-11-28，Carbon：合并上游 `dsh-v0.2.3-alpha.3` 至 Ciallo App `v0.3`，保留 CialloAPI 多分组/推理档位/缓存时长与会话粘性、`~/.ciallo` 与 `%APPDATA%\Ciallo` 隔离、`~/.dsh` 一键非破坏迁移、一层模型菜单及 Ciallo 品牌视觉，同时接入上游 pi-ai provider rows、模型拖拽排序、API 密钥只读更换/清除、可继续子代理模型切换与动态 Client 插件 `/client` 子路径规范。
 - 2026-11-24，Carbon：扩展 `~/.dsh` 一键迁移覆盖各 profile `cordis.patch.yml` 中的模型提供商与默认模型配置，自动升级 `@local/dsh-ciallo-affinity` 本地代理为内置会话亲和，并刷新客户端配置镜像。
 - 2026-11-24，Carbon：修复 `~/.dsh` 迁移后冷会话标题缓存未写入运行态 `storageDomain` 的问题，并重写仓库根 `README.md` / `README.zh.md` 为 Ciallo App 说明。
 - 2026-11-24，Carbon：更新 v0.2 默认 `~/.ciallo` 数据根目录、Electron `%APPDATA%\Ciallo` 隔离、`Ciallo.exe` 独立身份及一键 `~/.dsh` 迁移说明。

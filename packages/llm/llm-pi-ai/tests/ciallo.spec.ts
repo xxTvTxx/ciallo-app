@@ -31,6 +31,7 @@ const parents = new Map<string, string>([['child', 'parent'], ['parent', 'root']
 
 async function harness(routes: Record<string, object>, withSessions = true): Promise<Context> {
   vi.stubEnv('CIALLO_TEST_KEY', 'fixture-key')
+  vi.stubEnv('PI_CACHE_RETENTION', '')
   const ctx = new Context()
   onTestFinished(() => ctx.fiber.dispose())
   if (withSessions) {

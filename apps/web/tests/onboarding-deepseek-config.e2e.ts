@@ -16,7 +16,7 @@ import {
   acknowledgeReloadConnectionLoss, assertFixtureInventory, captureStableAria, CIALLO_START_COPY, compareOrRefreshGolden,
   launchWebScaffold, watchConsole, webSnapshotMode, type WebScaffold,
 } from './scaffold.ts'
-import { openSettings, ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './support.ts'
+import { credentialOnboardingStarted, openSettings, ZH_BROWSER_LOCALE, connectFreshWorkspaceZh, saveFailureShot } from './support.ts'
 
 const SNAPSHOT_DIR = fileURLToPath(new URL('./expected/onboarding-deepseek-config', import.meta.url))
 const START_EXPECTED = join(SNAPSHOT_DIR, 'start.expected.md')
@@ -98,16 +98,11 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
     expect((await page.locator('body').ariaSnapshot()).includes(secret)).toBe(false)
     expect(browserConsole.some(line => line.includes(secret))).toBe(false)
 
-    // The configured provider is now an ordinary row exposing the write-only placeholder without a reload.
+    // The configured provider is now an ordinary row showing the saved key's masked preview without a reload.
     const deepSeekRow = settings.getByText('DeepSeek API', { exact: true }).first()
     await deepSeekRow.waitFor({ timeout: 10_000 })
     await deepSeekRow.locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
-    const configuredInput = settings.getByLabel('API 密钥', { exact: true })
-    await configuredInput.waitFor({ timeout: 10_000 })
-    await expect.poll(
-      () => configuredInput.getAttribute('placeholder'),
-      { timeout: 10_000 },
-    ).toBe(`dsh_onboa${'•'.repeat(31)}test`)
+    await settings.getByText(`dsh_onboa${'•'.repeat(31)}test`, { exact: true }).waitFor({ timeout: 10_000 })
 
     // A usable provider exists, so the first-run step stays closed after a reload.
     const secondReloadWarnings = tripwire.warnings.length
@@ -171,10 +166,16 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
     })
     const warningsBefore = tripwire.warnings.length
     await page.reload({ waitUntil: 'commit' })
+    // Armed after the commit, so a read from the previous document, whose Models
+    // page loaded in the first scenario, cannot satisfy it. The credential step
+    // mounts once the welcome step has decided; the next scenario opens Settings
+    // on this page without reloading it.
+    const credentialStep = credentialOnboardingStarted(page)
     await page.waitForSelector('[class*="frame"]', { timeout: 15_000 })
     // The app is painted and interactive while the steps are still deciding.
     await page.waitForTimeout(600)
     releaseDescribe()
+    await credentialStep
     await page.waitForTimeout(400)
     await page.unroute('**/api/settings/describe')
     acknowledgeReloadConnectionLoss(tripwire, warningsBefore)
@@ -196,12 +197,16 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
     const deepSeek = settings.getByText('DeepSeek API', { exact: true }).first()
     await deepSeek.waitFor({ timeout: 10_000 })
     await deepSeek.locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
-    await settings.getByText('自定义设置').click()
-    expect(await settings.getByLabel('模型 ID 1').inputValue()).toBe('deepseek-flash')
-    expect(await settings.getByLabel('显示名称 1').inputValue()).toBe('DeepSeek-V4.1-Flash')
-    expect(await settings.getByLabel('模型 ID 2').inputValue()).toBe('deepseek-v4-pro')
+    // A folded row names its model as text; its fields exist once it is unfolded.
+    const rows = settings.locator('[data-row-key]')
+    await rows.nth(0).getByText('deepseek-flash', { exact: true }).waitFor({ timeout: 10_000 })
+    await rows.nth(0).getByText('DeepSeek-V4.1-Flash', { exact: true }).waitFor({ timeout: 10_000 })
+    await rows.nth(1).getByText('deepseek-v4-pro', { exact: true }).waitFor({ timeout: 10_000 })
+    expect(await settings.getByRole('textbox', { name: /^(模型 ID|显示名称) / }).count()).toBe(0)
     expect(await settings.getByRole('button', { name: /删除模型/ }).count()).toBe(2)
     await settings.getByRole('button', { name: '模型选项 1' }).click()
+    expect(await settings.getByLabel('模型 ID 1').inputValue()).toBe('deepseek-flash')
+    expect(await settings.getByLabel('显示名称 1').inputValue()).toBe('DeepSeek-V4.1-Flash')
     expect(await settings.getByRole('group', { name: '输入类型 1' }).getByRole('checkbox', { name: '图片' }).isChecked()).toBe(true)
     await assertModelInputLayout(page, settings)
     const defaultModels = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
@@ -224,7 +229,6 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
       name: 'DeepSeek-V4-Pro', inputModalities: ['text'],
     })
     await deepSeek.locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
-    await settings.getByText('自定义设置').click()
     for (let index = 0; index < 2; index++) {
       await settings.getByRole('button', { name: /删除模型/ }).first().click()
     }
@@ -239,10 +243,7 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
     expect(await settings.getByRole('group', { name: '输入类型 1' }).getByRole('checkbox', { name: '图片' }).isChecked()).toBe(false)
     await settings.getByRole('group', { name: '输入类型 1' }).getByRole('checkbox', { name: '图片' }).check()
 
-    await expect.poll(
-      () => settings.getByLabel('API 密钥', { exact: true }).getAttribute('placeholder'),
-      { timeout: 10_000 },
-    ).toBe(`dsh_onboa${'•'.repeat(31)}test`)
+    await settings.getByText(`dsh_onboa${'•'.repeat(31)}test`, { exact: true }).waitFor({ timeout: 10_000 })
     const modelEditor = await captureStableAria(page, '[role="dialog"]', scaffold.workspaceCwd)
     await compareOrRefreshGolden(MODELS_EXPECTED, modelEditor, MODE)
     await settings.getByRole('button', { name: '保存', exact: true }).click()
@@ -259,7 +260,6 @@ describe.skipIf(MODE === 'record')('web e2e: first-run setup and DeepSeek creden
       inputModalities: ['text', 'image'],
     })
     await deepSeek.locator('xpath=ancestor::li').getByRole('button', { name: '编辑' }).click()
-    await settings.getByText('自定义设置').click()
     await settings.getByRole('button', { name: '模型选项 1' }).click()
     expect(await settings.getByRole('group', { name: '输入类型 1' }).getByRole('checkbox', { name: '图片' }).isChecked()).toBe(true)
     await settings.getByRole('button', { name: '取消', exact: true }).click()

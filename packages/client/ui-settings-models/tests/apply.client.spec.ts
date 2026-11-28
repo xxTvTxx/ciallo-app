@@ -1,7 +1,7 @@
 /** Models section registration: slot declaration injection, the locale-following label thunk, and HMR recovery. */
 import { Context } from '@deepseek-ai/cordis'
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots'
+import { resolveSlotLabel } from '@deepseek-ai/dsh-client-ui-slots/client'
 import { SlotRegistry } from '@deepseek-ai/dsh-client-ui-renderer/client'
 import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
 import { syncedConfig, TestRemote } from '@deepseek-ai/dsh-client-test-runtime'

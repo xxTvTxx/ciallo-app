@@ -126,6 +126,24 @@ Host service backing the generated `ctx.remote.settings` namespace. Every remote
  * @throws RemoteError when no document exists, preparation fails, or opening fails.
  */
 @Remote async openSettingsDocument(signal: AbortSignal): Promise<SettingsDocumentOpenValue>
+
+/**
+ * Inspect an existing legacy DeepSeek Harness home (`~/.dsh`) without writing to disk.
+ * @param signal - Caller cancellation signal.
+ * @returns redacted counts and availability flags for one-click migration.
+ * @throws RemoteError when called by a non-owner Peer or aborted.
+ */
+@Remote async inspectLegacyDsh(signal: AbortSignal): Promise<LegacyDshSummary>
+
+/**
+ * Idempotently copy sessions, attachments, skills, `AGENTS.md`, and optionally
+ * stored API keys from `~/.dsh` into the active home without overwriting target data.
+ * @param options - Migration options, including whether to copy credential refs.
+ * @param signal - Caller cancellation signal.
+ * @returns counts of copied vs skipped artifacts.
+ * @throws RemoteError when called by a non-owner Peer, invalid payload, or aborted.
+ */
+@Remote async importLegacyDsh( options: LegacyDshImportOptions | undefined, signal: AbortSignal, ): Promise<LegacyDshImportResult>
 ```
 
 Source: [`packages/api/settings-controller/src/index.ts`](../../packages/api/settings-controller/src/index.ts)

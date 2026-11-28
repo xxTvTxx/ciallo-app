@@ -10,7 +10,7 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { CredentialInfo, LlmDiscoveredModel } from '@deepseek-ai/dsh-api-remotes/client'
-import { SegmentedControl, Switch } from '@deepseek-ai/dsh-client-ui-primitives'
+import { SegmentedControl, Switch } from '@deepseek-ai/dsh-client-ui-primitives/client'
 import { apiKeyFailure } from './apiKey.ts'
 import { ApiKeyInput } from './ApiKeyInput.tsx'
 import { cialloApiBaseURL } from './ciallo-api.ts'
@@ -240,7 +240,7 @@ export function CialloGroupEditor(props: CialloGroupEditorProps): ReactNode {
         : creating && rows.length === 0 && keyFailure === undefined
           ? <p className={styles['advancedHint']}>{t('cialloKeyHint')}</p>
           : null
-  const savedKey = stored?.credential?.configured === true && stored.credential.masked !== undefined && keyDraft.length === 0
+  const savedKey = stored?.credential?.configured === true
     ? { masked: stored.credential.masked }
     : undefined
 
@@ -270,6 +270,7 @@ export function CialloGroupEditor(props: CialloGroupEditorProps): ReactNode {
             {...savedKey === undefined ? {} : { saved: savedKey }}
             placeholder={t('keyPlaceholder')}
             aria-label={t('keyInput')}
+            invalid={keyFailure !== undefined}
             required={creating}
             autoFocus={creating}
             disabled={disabled || (creating && resume !== undefined)}
@@ -309,7 +310,7 @@ export function CialloGroupEditor(props: CialloGroupEditorProps): ReactNode {
           </span>
           <button
             type="button"
-            className={styles['linkButton']}
+            className={styles['textAction']}
             disabled={disabled || detection.kind === 'fetching' || baseURL === undefined || keyFailure !== undefined
               || (creating && keyValue.length === 0)}
             onClick={refetch}
@@ -381,9 +382,9 @@ export function CialloGroupEditor(props: CialloGroupEditorProps): ReactNode {
         {rows.length > 0 && checked.length === 0 ? <p className={styles['error']}>{t('cialloNoModels')}</p> : null}
         {contextInvalid ? <p className={styles['error']}>{t('modelContextInvalid')}</p> : null}
       </section>
-      <details className={styles['customized']}>
+      <details className={css.customized}>
         <summary className={styles['customizedSummary']}>{t('cialloAdvanced')}</summary>
-        <div className={styles['customizedBody']}>
+        <div className={css.customizedBody}>
           <label className={styles['field']}>
             <span className={styles['fieldLabel']}>{t('customApi')}</span>
             <select

@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LegacyDshImportResult, LegacyDshSummary } from '@deepseek-ai/dsh-api-remotes/client'
-import { Button, Checkbox } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button, Checkbox } from '@deepseek-ai/dsh-client-ui-primitives/client'
 import type { ModelsOperations } from './operations.ts'
 import type { ModelsSettingsStore } from './store.ts'
 import type { en } from './locales.ts'

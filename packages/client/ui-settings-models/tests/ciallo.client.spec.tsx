@@ -1,11 +1,13 @@
 // @vitest-environment jsdom
 /** CialloAPI groups: recognition, the group card and editor, the shared create path, and the first-run step. */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots/client'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
 import { Context } from '@deepseek-ai/cordis'
-import { allowAllAccess, bindSnapshotSelector, contextMenuHook, RemoteError } from '@deepseek-ai/dsh-client-test-runtime'
+import {
+  allowAllAccess, bindSnapshotSelector, contextMenuHook, RemoteError, responsiveHooks, themeHooks,
+} from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { CredentialInfo, LlmDiscoveredModel, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
@@ -90,6 +92,7 @@ function groupRow(route: string, credential?: CredentialInfo, patch: Partial<Pro
     },
     configured: true,
     removable: true,
+    adapterNs: 'llm-pi-ai',
     apiKeyEnv: `${route.toUpperCase().replace('-', '_')}_API_KEY`,
     credential,
   }
@@ -293,11 +296,13 @@ function pasteKey(value: string): void {
 
 describe('CialloGroupEditor', () => {
   it('fetches a pasted key, recognizes a Claude group, and creates it with every listed model', async () => {
-    const { operations, onClose } = renderEditor()
+    const reply = Promise.withResolvers<ModelDiscoveryOutcome>()
+    const { operations, onClose } = renderEditor({}, stubOperations({ discoverModels: vi.fn(() => reply.promise) }))
     expect(screen.getByText(en.cialloKeyHint)).toBeTruthy()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: en.cialloSave }).disabled).toBe(true)
     pasteKey(' sk-claude ')
     expect(await screen.findByText(en.cialloDetecting)).toBeTruthy()
+    reply.resolve({ kind: 'found', models: CLAUDE_MODELS })
     await screen.findByText(en.cialloDetectedKind.replace('{kind}', 'Claude'))
     expect(operations.discoverModels).toHaveBeenCalledWith('llm-pi-ai', {
       provider: 'cialloapi-2', baseURL: 'https://cialloapi.com/v1', api: 'openai-responses', apiKey: 'sk-claude',
@@ -419,7 +424,8 @@ describe('CialloGroupEditor', () => {
     const storeCredential = vi.fn().mockResolvedValueOnce('locked').mockResolvedValue(undefined)
     const { onClose } = renderEditor({ route: 'cialloapi', stored: storedClaude }, stubOperations({ writeSettings, storeCredential }))
     expect(screen.getByText(en.cialloDetectedKind.replace('{kind}', 'Claude'))).toBeTruthy()
-    expect(screen.getByLabelText<HTMLInputElement>(en.keyInput).placeholder).toBe('sk-…9f2a')
+    expect(screen.getByText('sk-…9f2a')).toBeTruthy()
+    expect(screen.queryByLabelText(en.keyInput)).toBeNull()
     expect(screen.getByRole('tab', { name: en.cialloCache1h }).getAttribute('aria-selected')).toBe('true')
     // A stored default outside the declared levels stays selectable; a model without levels has no choice.
     expect(screen.getByLabelText<HTMLSelectElement>(`${en.modelReasoningDefault} claude-opus-5-5`).value).toBe('max')
@@ -428,6 +434,7 @@ describe('CialloGroupEditor', () => {
     fireEvent.click(screen.getByRole('tab', { name: en.cialloCache5m }))
     fireEvent.click(screen.getByRole('switch', { name: en.cialloSessionAffinity }))
     fireEvent.click(screen.getByRole('checkbox', { name: 'claude-haiku-5-5' }))
+    fireEvent.click(screen.getByRole('button', { name: en.keyReplace }))
     pasteKey('sk-new')
     fireEvent.click(screen.getByRole('button', { name: en.cialloSave }))
     expect(await screen.findByText('schema says no')).toBeTruthy()
@@ -560,7 +567,8 @@ describe('CialloApiCard', () => {
     const { onSaved, operations } = renderCard()
     fireEvent.click(screen.getByRole('button', { name: en.editProvider.replace('{provider}', 'cialloapi') }))
     const editor = screen.getByRole('group', { name: en.cialloEditGroup })
-    expect(within(editor).getByLabelText<HTMLInputElement>(en.keyInput).placeholder).toBe('sk-…9f2a')
+    expect(within(editor).getByText('sk-…9f2a')).toBeTruthy()
+    expect(within(editor).queryByLabelText(en.keyInput)).toBeNull()
     expect(screen.getByRole<HTMLButtonElement>('button', { name: en.cialloAddGroup }).disabled).toBe(true)
     fireEvent.click(within(editor).getByRole('button', { name: en.cancel }))
     expect(onSaved).not.toHaveBeenCalled()
@@ -643,7 +651,7 @@ function joinState(patch: Partial<ModelsSettingsState> = {}): ModelsSettingsStat
     status: 'ready', error: null, credentialError: null, writable: true,
     rows: [{
       entry: { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
-      configured: true, removable: false, apiKeyEnv: 'DEEPSEEK_API_KEY', credential: { configured: false, writable: true },
+      configured: true, removable: false, adapterNs: 'llm-deepseek', apiKeyEnv: 'DEEPSEEK_API_KEY', credential: { configured: false, writable: true },
     }],
     namespaces: new Map([['llm-pi-ai', piAi({})]]),
     ...patch,
@@ -694,6 +702,7 @@ function renderStart(options: {
     useWorkspaces: unusedHook,
     ...allowAllAccess,
     useContextMenu: contextMenuHook(),
+    ...responsiveHooks(), ...themeHooks(),
     controller,
     useModels: bindSnapshotSelector(controller.store),
     useAutomatic: bindSnapshotSelector(createSnapshotStore(options.automatic ?? true)),
@@ -707,12 +716,16 @@ function renderStart(options: {
 
 describe('CialloStartDialog', () => {
   it('creates the first group from one pasted key and makes its model the default', async () => {
-    const { complete, load, operations } = renderStart()
+    const reply = Promise.withResolvers<ModelDiscoveryOutcome>()
+    const { complete, load, operations } = renderStart({
+      operations: stubOperations({ discoverModels: vi.fn(() => reply.promise) }),
+    })
     const dialog = screen.getByRole('dialog', { name: en.startTitle })
     expect(within(dialog).getByText(en.startHint)).toBeTruthy()
     expect(within(dialog).getByRole<HTMLButtonElement>('button', { name: en.startSubmit }).disabled).toBe(true)
     pasteKey('sk-claude')
     await screen.findByText(en.cialloDetecting)
+    reply.resolve({ kind: 'found', models: CLAUDE_MODELS })
     await screen.findByText(en.cialloDetected.replace('{kind}', 'Claude').replace('{count}', '2').replace('{model}', 'claude-opus-5-5'))
     expect(operations.discoverModels).toHaveBeenCalledWith('llm-pi-ai', {
       provider: 'cialloapi', baseURL: 'https://cialloapi.com/v1', api: 'openai-responses', apiKey: 'sk-claude',

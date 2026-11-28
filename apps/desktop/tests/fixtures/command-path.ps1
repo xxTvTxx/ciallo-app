@@ -99,7 +99,7 @@ try {
     [IO.File]::WriteAllText((Join-Path $bin 'dsh.cmd'), 'fixture')
     [void](Apply 'install' $other)
     $protocolKey = $keyRoot + '\Protocol'
-    $foreignCommand = '"' + (Join-Path $other 'DeepSeek Harness.exe') + '" "%1"'
+    $foreignCommand = '"' + (Join-Path $other 'Ciallo.exe') + '" "%1"'
     $key = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($protocolKey + '\shell\open\command')
     try { $key.SetValue('', $foreignCommand) } finally { $key.Dispose() }
     $helper = Join-Path (Split-Path $Worker) 'uninstall-registration.ps1'
@@ -112,7 +112,7 @@ try {
     $scheme = 'dsh-command-test-' + $identity
     $protocolKey = 'Software\Classes\' + $scheme
     $launcher = Join-Path $PSScriptRoot 'register-test-protocol.cjs'
-    $exe = Join-Path $app 'DeepSeek Harness.exe'
+    $exe = Join-Path $app 'Ciallo.exe'
     $registration = Start-Process $Electron -ArgumentList @(('"' + $launcher + '"'), ('"--user-data-dir=' + $Root + '\profile"'), $scheme, ('"' + $exe + '"')) -PassThru -WindowStyle Hidden
     try {
         if (-not $registration.WaitForExit(20000)) { $registration.Kill(); $registration.WaitForExit(); throw 'Electron protocol registration timed out' }

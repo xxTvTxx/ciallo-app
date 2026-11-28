@@ -3,10 +3,10 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Schema from '@deepseek-ai/schemastery'
-import { allowAllAccess, bindSnapshotSelector, contextMenuHook } from '@deepseek-ai/dsh-client-test-runtime'
+import { allowAllAccess, bindSnapshotSelector, contextMenuHook, responsiveHooks, themeHooks } from '@deepseek-ai/dsh-client-test-runtime'
 import { createSnapshotStore } from '@deepseek-ai/dsh-client-store'
 import type { LegacyDshSummary, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots'
+import type { GlobalStandardProps } from '@deepseek-ai/dsh-client-ui-slots/client'
 import type { JsonValue } from '@deepseek-ai/dsh-util-values'
 import { SettingsDescribeMirror } from '@deepseek-ai/dsh-client-ui-settings/src/client/settings-mirror.ts'
 import { CialloStartDialog, type CialloStartDialogProps } from '../src/client/CialloStartDialog.tsx'
@@ -126,6 +126,7 @@ describe('LegacyDshImportBanner integration', () => {
       useWorkspaces: unusedHook,
       ...allowAllAccess,
       useContextMenu: contextMenuHook(),
+      ...responsiveHooks(), ...themeHooks(),
       controller,
       useModels: bindSnapshotSelector(controller.store),
       useAutomatic: bindSnapshotSelector(createSnapshotStore(true)),

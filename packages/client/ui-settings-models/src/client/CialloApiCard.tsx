@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import { IconPlusOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconPlusOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitives/client'
 import { CIALLO_API, cialloApiBaseURL, cialloApiOrigin } from './ciallo-api.ts'
 import {
   CIALLO_KIND_KEYS, CLAUDE_PROTOCOL, cialloGroupName, cialloSessionAffinity, compareCialloRoutes, modelId,
@@ -122,7 +122,7 @@ export function CialloApiCard(props: CialloApiCardProps): ReactNode {
               <span className={css.addressText} title={origin}>{origin}</span>
               <button
                 type="button"
-                className={styles['linkButton']}
+                className={styles['textAction']}
                 disabled={blocked || editor !== undefined}
                 onClick={() => { setAddressDraft(origin); setAddressFailure(undefined) }}
               >

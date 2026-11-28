@@ -81,7 +81,7 @@ describe('web e2e: model provider settings', () => {
   it('rejects an invalid edit without persisting and accepts removal of the obsolete model', async () => {
     const dialog = page.getByRole('dialog', { name: '设置' })
     await dialog.getByRole('button', { name: '编辑 openrouter', exact: true }).click()
-    await dialog.getByText('自定义设置', { exact: true }).click()
+    await dialog.getByRole('button', { name: '高级设置', exact: true }).click()
     await dialog.getByLabel('API 地址', { exact: true }).fill('https://gateway.example/v1')
     const before = await readFile(join(home, 'profiles', 'scaffold', 'cordis.patch.yml'), 'utf8')
     await dialog.getByRole('button', { name: '保存', exact: true }).click()

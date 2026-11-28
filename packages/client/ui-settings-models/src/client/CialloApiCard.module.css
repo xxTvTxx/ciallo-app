@@ -315,3 +315,19 @@
   flex: 1 1 auto;
   min-width: 0;
 }
+
+.customized {
+  border-top: 0.5px solid var(--dsw-alias-border-l2);
+  padding-top: 10px;
+}
+
+.customized[open] > summary::before {
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+
+.customizedBody {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 10px;
+}

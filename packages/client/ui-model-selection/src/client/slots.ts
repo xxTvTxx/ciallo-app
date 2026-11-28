@@ -44,7 +44,7 @@ export type ModelMenuOptions = ModelMenuControls & {
   openPane: (pane: ModelMenuPaneRef) => void
 }
 
-declare module '@deepseek-ai/dsh-client-ui-slots' {
+declare module '@deepseek-ai/dsh-client-ui-slots/client' {
   interface SlotMap {
     /**
      * Session options listed below the model list, after a divider.

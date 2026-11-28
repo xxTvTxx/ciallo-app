@@ -7,8 +7,9 @@
 import type { ModelSelectionProjection } from '@deepseek-ai/dsh-agent/types'
 import type { TrackProductEvent } from '@deepseek-ai/dsh-client-product-analytics/client'
 import type {
-  ModelCatalogFailure, ModelProviderGroup, ModelSelection,
+  ModelCatalogFailure, ModelProviderGroup, ModelSelection, SessionSelectModelValue,
 } from '@deepseek-ai/dsh-api-session-controller/types'
+import type { SubagentAddress } from '@deepseek-ai/dsh-subagent/client'
 import type { SessionId } from '@deepseek-ai/dsh-api-remotes/client'
 import type { RemoteResult, TypertClientRemote } from '@deepseek-ai/dsh-typert-protocol'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
@@ -40,6 +41,15 @@ export interface ModelDirectoryState {
 /** Prompt-cache lifetime: `short` (five minutes) or `long` (one hour). */
 export type CacheRetention = 'short' | 'long'
 
+/**
+ * Whether a Session offers model selection: ordinary Sessions and continuable subagents do.
+ * @param address - direct-parent address for a child, absent for an ordinary Session.
+ * @returns whether the /model popup and composer seat may load and submit choices.
+ */
+export function modelSelectable(address: SubagentAddress | undefined): boolean {
+  return address === undefined || address.mode === 'continuable'
+}
+
 /** One session's shared directory controller; disposed with the session scope. */
 export class ModelDirectory {
   /** The shared snapshot both entries render from (uSES-safe store). */
@@ -54,20 +64,22 @@ export class ModelDirectory {
   private readonly unsubscribeSelection: () => void
 
   /**
-   * @param sessions - the session wire face (captured from the plugin's root connection).
+   * @param selectModel - submit a choice through this Session's owning Remote service.
    * @param cache - the per-Session prompt-cache lifetime wire face.
    * @param sessionId - the owning session.
-   * @param available - whether this session may use Agent-bound model RPCs.
+   * @param address - direct-parent address for a child, absent for an ordinary Session.
    * @param catalog - Host-generation catalog shared by every Session.
    * @param projected - durable model selection projected from Session history.
    * @param isBlank - whether this Session has no first message yet.
    * @param track - desktop-only callback after a successful user selection.
    */
   constructor(
-    private readonly sessions: Pick<TypertClientRemote['session'], 'selectModel'>,
+    private readonly selectModel: (
+      selection: ModelSelection,
+    ) => Promise<RemoteResult<SessionSelectModelValue>>,
     private readonly cache: Pick<TypertClientRemote['llm'], 'sessionCacheRetention' | 'setSessionCacheRetention'>,
     private readonly sessionId: SessionId,
-    private readonly available: () => boolean,
+    private readonly address: () => SubagentAddress | undefined,
     private readonly catalog: ModelCatalogDirectory,
     private readonly projected: ObservableSnapshot<unknown>,
     private readonly isBlank: () => boolean,
@@ -107,8 +119,8 @@ export class ModelDirectory {
   }
 
   /**
-   * Select the complete provider/model/reasoning selection. The durable
-   * projection frame updates the shared current; failures surface on the store
+   * Select the complete provider/model/reasoning selection. Projection updates
+   * carry the saved choice; failures surface on the store
    * and return with the operation so each entry can present its own failure.
    * @param selection - provider, provider-owned model id, and optional adapter-owned effort.
    * @returns the selection outcome, including the original Remote failure.
@@ -120,14 +132,7 @@ export class ModelDirectory {
     const nextEffort = selection.reasoningEffort ?? this.catalog.reasoningFor(selection)?.defaultEffort
     const generation = ++this.generation
     this.store.update((s) => { s.status = 'selecting'; s.pending = selection; s.error = null })
-    const result = await this.sessions.selectModel({
-      sessionId: this.sessionId,
-      provider: selection.provider,
-      model: selection.model,
-      ...selection.reasoningEffort === undefined
-        ? {}
-        : { reasoningEffort: selection.reasoningEffort },
-    })
+    const result = await this.selectModel(selection)
     if (this.disposed || generation !== this.generation) {
       return result.ok ? { ok: true, value: undefined } : result
     }
@@ -174,7 +179,7 @@ export class ModelDirectory {
   }
 
   private assertAvailable(): void {
-    if (!this.available()) {
+    if (!modelSelectable(this.address())) {
       throw new Error('model selection is unavailable for addressed subagent sessions')
     }
   }
@@ -183,7 +188,10 @@ export class ModelDirectory {
     if (this.disposed) return
     const catalog = this.catalog.store.getSnapshot()
     const projected = modelSelectionProjection(this.projected.getSnapshot())
-    const intended = projected?.next ?? catalog.value?.default
+    const defaultSelection = this.address() === undefined
+      ? catalog.value?.default
+      : undefined
+    const intended = projected?.next ?? defaultSelection
     const reasoning = intended === undefined ? undefined : this.catalog.reasoningFor(intended)
     const effort = intended?.reasoningEffort ?? reasoning?.defaultEffort
     const retainedEffort = effort === undefined ? undefined
@@ -202,11 +210,11 @@ export class ModelDirectory {
       })
       return
     }
-    const selection = projected.next ?? catalog.value.default
-    const routable = catalog.value.groups.some(group => group.id === selection.provider
+    const selection = projected.next ?? defaultSelection
+    const routable = selection !== undefined && catalog.value.groups.some(group => group.id === selection.provider
       && group.models.some(model => model.id === selection.model))
     this.store.set({
-      current: selection,
+      current: selection ?? null,
       ...retainedEffort === undefined ? {} : { retainedEffort },
       routable,
       groups: catalog.value.groups,

@@ -9,8 +9,8 @@
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { ObservableSnapshot, SnapshotStore } from '@deepseek-ai/dsh-client-store'
-import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots/client'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives/client'
 import { apiKeyFailure } from './apiKey.ts'
 import { ApiKeyInput } from './ApiKeyInput.tsx'
 import { CIALLO_API, cialloApiBaseURL, cialloApiProtocols } from './ciallo-api.ts'
@@ -20,7 +20,7 @@ import {
 import { adoptCandidate } from './ModelListEditor.tsx'
 import { CIALLO_NS, createCialloGroup } from './ciallo-save.ts'
 import type { CialloCreateResume } from './ciallo-save.ts'
-import { deriveKeyRef, protocolChoices, providerUsable } from './store.ts'
+import { deriveKeyRef, PI_AI_PROFILE_PATH, protocolChoices, providerUsable } from './store.ts'
 import type { ModelsSettingsState, ModelsSettingsStore } from './store.ts'
 import { useCialloDiscovery } from './useCialloDiscovery.ts'
 import type { ModelsOperations } from './operations.ts'
@@ -74,7 +74,7 @@ export function cialloStartReadiness(
   if (state.status === 'error' || !state.writable) return { kind: 'skip' }
   if (!explicit && state.rows.some(providerUsable)) return { kind: 'skip' }
   const namespace = state.namespaces.get(CIALLO_NS)
-  const protocols = cialloApiProtocols(protocolChoices(namespace, schema))
+  const protocols = cialloApiProtocols(protocolChoices(namespace, PI_AI_PROFILE_PATH, schema))
   if (namespace === undefined || protocols.length === 0) return { kind: 'skip' }
   return { kind: 'offer', protocols, revision: namespace.revision, taken: state.rows.map(row => row.entry.provider) }
 }
@@ -241,6 +241,7 @@ export function CialloStartDialog(props: CialloStartDialogProps): ReactNode {
                 value={keyDraft}
                 placeholder={t('keyPlaceholder')}
                 aria-label={t('keyInput')}
+                invalid={keyFailure !== undefined}
                 autoFocus
                 required
                 disabled={busy || created || resume !== undefined}
